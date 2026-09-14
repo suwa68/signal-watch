@@ -1,0 +1,16 @@
+version: 1
+
+id: example_news
+name: Example News
+type: html
+
+interval_seconds: 300
+
+config:
+  url: https://example.com/news
+
+  selectors:
+    item: ".news-item"
+    title: ".title"
+    url: "a"
+    content: ".summary"

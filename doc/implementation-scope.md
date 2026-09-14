@@ -1,124 +1,117 @@
-# Initial Implementation Scope
+# Initial Go Implementation Scope
 
-## Goal
+## Objective
 
-Produce the first working source-side skeleton of Auto Alert without prematurely implementing downstream alert semantics.
+Create the first Go implementation of the SignalWatch source-side architecture.
 
-## Deliverables
+The implementation should prove the architectural boundaries without building the full product.
 
-The first implementation should include:
+## Required Deliverables
 
-1. Python project/package setup
-2. `SourceDefinitionDocument`
-3. `SourceDefinitionRepository` protocol
-4. `FileSourceDefinitionRepository`
-5. `ConfigDecoder` protocol
-6. `YamlConfigDecoder`
-7. source config schema version 1 parsing/validation
-8. generic `SourceConfig`
-9. HTML-specific typed settings
-10. `SourceAdapter` protocol
-11. `SourceAdapterRegistry`
-12. `SourceRunner`
-13. `HtmlSourceAdapter`
-14. HTTP GET abstraction
-15. HTML extraction using CSS selectors
-16. smallest practical provisional `MonitorItem`
-17. unit tests using local fixtures
-18. one example source YAML
-19. basic README instructions for running tests and demonstrating config loading
+1. Initialize/verify the Go module.
+2. Create source-definition models and repository interfaces.
+3. Implement `FileSourceDefinitionRepository`.
+4. Create config decoder abstraction.
+5. Implement YAML decoder.
+6. Enforce config schema `version: 1`.
+7. Create generic `SourceConfig`.
+8. Create typed HTML adapter settings.
+9. Define `SourceAdapter`.
+10. Implement `SourceAdapterRegistry`.
+11. Implement `SourceRunner`.
+12. Implement native Go `HTMLSourceAdapter`.
+13. Implement HTTP GET boundary.
+14. Implement CSS-selector-based HTML extraction.
+15. Add provisional `MonitorItem`.
+16. Add fixture-based tests.
+17. Add one example YAML source definition.
+18. Add minimal developer documentation needed to run tests.
 
-## Required Architectural Behavior
+## Required Behavior
 
-The implementation must demonstrate that these concerns are independent:
+The implementation must demonstrate separation between:
 
 ```text
-Storage:
+Storage
 FileSourceDefinitionRepository
-        |
-        v
-SourceDefinitionDocument
 
-Encoding:
-YamlConfigDecoder
-        |
-        v
-decoded config
+Serialization
+YAMLConfigDecoder
 
-Schema:
-version 1 validation
-        |
-        v
-SourceConfig
+Schema
+Config v1 validation
 
-Runtime:
-SourceAdapterRegistry
-        |
-        v
-HtmlSourceAdapter
-        |
-        v
+Runtime
+SourceRunner
+Adapter Registry
+HTMLSourceAdapter
+
+Output
 MonitorItem[]
 ```
+
+## Language Requirement
+
+The current implementation is Go-only.
+
+Do not create:
+
+- Python code,
+- Java code,
+- external worker services,
+- subprocess adapters,
+- gRPC definitions.
+
+The architecture should leave room for those later.
 
 ## Non-Goals
 
 Do not implement:
 
-- Telegram
-- alert rules
-- scheduler
-- SQLite
-- change detector
-- item history
-- notification outbox
-- Kafka
-- Redis
-- Celery
-- Kubernetes client
-- database-backed source repository
-- RSS
-- JSON source adapter
-- Playwright
-- web UI
-
-Interfaces should make those future additions possible where already discussed, but there is no requirement to create empty implementations for them.
+- scheduler,
+- Telegram,
+- rule engine,
+- change detector,
+- persistence,
+- outbox,
+- RSS,
+- JSON API source,
+- Playwright,
+- database source repository,
+- Kubernetes client,
+- external adapter transport,
+- final cross-language schema.
 
 ## Acceptance Criteria
 
-The implementation is acceptable when all of the following are true:
-
-1. A YAML file can be read through `FileSourceDefinitionRepository`.
-2. YAML decoding is independent from file reading.
-3. Schema version 1 is required and validated.
-4. A validated config becomes a generic `SourceConfig`.
-5. `SourceRunner` resolves the `html` adapter through a registry.
-6. The HTML adapter can process fixture HTML into provisional `MonitorItem` objects.
-7. Relative links are converted to absolute URLs.
-8. Parser unit tests do not require network access.
-9. Unsupported source types fail with a clear error.
-10. No downstream change-detection semantics are silently introduced.
-11. All tests pass.
+1. `go test ./...` passes.
+2. File repository and YAML decoding are separate.
+3. Schema version 1 is mandatory.
+4. Generic config is not HTML-specific.
+5. SourceRunner resolves adapter through registry.
+6. HTML adapter can parse fixture HTML.
+7. Relative links are resolved correctly.
+8. Network-dependent tests use `httptest.Server` or mocks/fakes.
+9. Unsupported source types return clear errors.
+10. No unresolved downstream semantics are silently finalized.
+11. No non-Go runtime is introduced.
 
 ## Implementation Bias
 
-When multiple implementations satisfy the architecture:
+Prefer:
 
-- choose the simpler one,
-- avoid framework-heavy solutions,
-- avoid dependency injection containers,
-- avoid unnecessary base classes,
-- prefer protocols/composition,
-- keep public contracts small.
+- standard library,
+- small focused interfaces,
+- explicit constructors,
+- table-driven tests,
+- composition,
+- `context.Context`,
+- minimal dependencies.
 
-## Expected Subagent Report
+Avoid:
 
-After implementation, report:
-
-- files created or changed,
-- dependency choices,
-- final public interfaces,
-- any deviations from the architecture,
-- assumptions made,
-- tests executed and results,
-- unresolved questions that should return to architecture discussion.
+- DI frameworks,
+- web frameworks,
+- global mutable registries,
+- premature generic frameworks,
+- reflection-heavy designs.
