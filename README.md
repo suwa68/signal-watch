@@ -31,3 +31,6 @@ docker compose run --rm go go test ./...
 ```
 
 Docker Compose keeps the Go module and build caches in named volumes between runs.
+
+An example version 1 source definition is available at
+[`examples/sources/example.yaml`](examples/sources/example.yaml).
