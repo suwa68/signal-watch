@@ -1,4 +1,4 @@
-# Auto Alert
+# SignalWatch
 
 A configurable source-monitoring system designed to detect meaningful changes in external information and send notifications through channels such as Telegram.
 

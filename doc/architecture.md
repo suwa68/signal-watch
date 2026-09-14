@@ -1,37 +1,10 @@
-# Auto Alert Architecture
+# SignalWatch Architecture
 
 ## 1. Purpose
 
-Auto Alert is intended to become a reusable information-monitoring platform.
+SignalWatch is a long-running information-monitoring engine.
 
-The system will eventually:
-
-1. load configured sources,
-2. collect data from those sources,
-3. convert source-specific data into common domain objects,
-4. detect meaningful changes,
-5. evaluate alert rules,
-6. deliver notifications.
-
-The project starts with a narrow source implementation while preserving clean extension points.
-
-## 2. Architectural Style
-
-The project should begin as a **modular monolith**.
-
-Initial deployment characteristics:
-
-- one repository
-- one application
-- one process unless operational needs later justify otherwise
-- no distributed messaging infrastructure
-- clear internal module boundaries
-
-Do not start with microservices.
-
-## 3. High-Level Direction
-
-The long-term pipeline is expected to resemble:
+Its eventual responsibility is:
 
 ```text
 Source Definition
@@ -46,104 +19,82 @@ MonitorItem[]
 Change Detection
         |
         v
-ChangeEvent[]
-        |
-        v
 Rule Engine
         |
         v
-Alert
+Notification Routing
         |
         v
-Notification Delivery
+Delivery Adapters
 ```
 
-Only the **Source Definition** and **Source Runtime** sections are currently specified in sufficient detail for implementation.
+Only the source-definition and source-runtime portions are currently specified in detail.
 
-The remaining sections are intentionally unresolved.
+## 2. Architectural Style
 
-## 4. Source Architecture Layers
+SignalWatch begins as a **modular monolith**.
 
-Source configuration is separated into three architectural concerns.
+Initial characteristics:
 
-### 4.1 Storage abstraction
+- one repository,
+- one primary Go application,
+- one deployable runtime,
+- no distributed queue,
+- no service mesh,
+- no microservice decomposition.
 
-Answers:
+Clear internal boundaries should allow later decomposition if actual scale or operational requirements justify it.
 
-> Where does the source definition come from?
+## 3. Language Strategy
 
-Contract:
+### 3.1 SignalWatch Core
 
-`SourceDefinitionRepository`
+The SignalWatch Core is implemented in **Go**.
 
-Version 1:
-
-`FileSourceDefinitionRepository`
-
-Future examples:
-
-- database
-- Kubernetes API
-- S3
-- remote configuration service
-
-A Kubernetes ConfigMap mounted into the filesystem does not require Kubernetes-aware application code. It can still be consumed through `FileSourceDefinitionRepository`.
-
-### 4.2 Schema/configuration abstraction
-
-Answers:
-
-> What does this source definition mean?
-
-Flow:
+Go owns the long-running runtime responsibilities:
 
 ```text
-SourceDefinitionDocument
-        |
-        v
-ConfigDecoder
-        |
-        v
-Decoded document
-        |
-        v
-Schema version validation / migration
-        |
-        v
-Validation
-        |
-        v
-SourceConfig
+Config
+Scheduling
+Concurrency
+Source Runtime
+Change Detection
+Rules
+Persistence
+Notification Routing
+Telegram
+Observability
+Lifecycle
 ```
 
-Version 1 encoding:
+### 3.2 Adapter language policy
 
-- YAML
+Source adapters are implemented in Go by default.
 
-Every definition contains:
+However, adapter implementation language is not part of the core domain contract.
 
-```yaml
-version: 1
+Future specialized adapters may use another language when justified.
+
+Examples:
+
+```text
+Go native HTML adapter
+Go native RSS adapter
+Go native JSON API adapter
+
+Python browser adapter
+Python AI/NLP adapter
+Java enterprise adapter
 ```
 
-Config schema version is separate from document revision.
+The language boundary must remain outside downstream monitoring logic.
 
-### 4.3 Runtime abstraction
+## 4. Stable Runtime Boundary
 
-Answers:
-
-> How is data collected from the configured source?
-
-Flow:
+The fundamental source-side runtime contract is:
 
 ```text
 SourceConfig
-    |
-    v
-SourceRunner
-    |
-    v
-SourceAdapterRegistry
     |
     v
 SourceAdapter
@@ -152,140 +103,259 @@ SourceAdapter
 MonitorItem[]
 ```
 
-Version 1 adapter:
+Downstream code should never need to know:
 
-`HtmlSourceAdapter`
+- whether parsing occurred in-process,
+- which parser library was used,
+- whether an adapter used Go or another language,
+- whether a future external adapter uses subprocess, HTTP, or gRPC.
 
-## 5. Important Distinction: Schema Version vs Revision
+## 5. Native and External Adapters
 
-These concepts must remain separate.
+The architecture anticipates two implementation classes:
+
+```text
+SourceAdapter
+    |
+    +-- Native Adapter
+    |
+    +-- External Adapter
+```
+
+### Native Adapter
+
+Runs in the SignalWatch Go process.
+
+Version 1 uses this model.
+
+Examples:
+
+- HTML
+- RSS
+- JSON API
+
+### External Adapter
+
+Runs outside the Go process.
+
+Potential future implementations:
+
+- subprocess adapter,
+- local worker,
+- remote HTTP adapter,
+- gRPC adapter.
+
+No external adapter transport is selected yet.
+
+## 6. Important Constraint
+
+Polyglot capability is an **extension point**, not a requirement to create multiple services today.
+
+Version 1 must not introduce:
+
+- Python sidecars,
+- gRPC servers,
+- adapter daemons,
+- service discovery,
+- message brokers.
+
+The first implementation is fully Go.
+
+## 7. Source Definition Architecture
+
+Source configuration is separated into three concerns.
+
+### Storage
+
+```text
+SourceDefinitionRepository
+```
+
+Answers:
+
+> Where do source definitions come from?
+
+Version 1:
+
+```text
+FileSourceDefinitionRepository
+```
+
+Potential future sources:
+
+- DB
+- S3
+- Kubernetes API
+- remote config service
+
+### Serialization
+
+```text
+ConfigDecoder
+```
+
+Answers:
+
+> How is the definition encoded?
+
+Version 1:
+
+```text
+YAML
+```
+
+Future:
+
+```text
+JSON
+```
+
+### Semantics
+
+```text
+Schema Version
+        |
+        v
+Validation
+        |
+        v
+SourceConfig
+```
+
+Answers:
+
+> What does this definition mean?
+
+## 8. Schema Version vs Definition Revision
+
+These are separate concepts.
 
 ### Schema version
-
-Example:
 
 ```yaml
 version: 1
 ```
 
-Meaning:
+Means:
 
-> Which config structure and semantics are being used?
+> Which config schema and semantics are used?
 
 ### Definition revision
 
-Example:
+Means:
+
+> Which revision of this specific source definition is currently loaded?
+
+Possible future revision sources:
+
+- file hash,
+- mtime,
+- database version,
+- Kubernetes resourceVersion,
+- S3 ETag.
+
+## 9. Version 1 Source Runtime
 
 ```text
-revision = "abc123"
-```
-
-Meaning:
-
-> Has this particular source definition changed?
-
-Possible revision implementations:
-
-- content hash
-- file mtime
-- database row version
-- Kubernetes resourceVersion
-- S3 ETag
-
-The exact revision strategy for files is not yet fixed.
-
-## 6. Stable Boundary
-
-The most important source-side runtime contract is:
-
-```text
-SourceAdapter -> MonitorItem[]
-```
-
-Source-specific details must be normalized before data moves deeper into the system.
-
-Future changes such as:
-
-- HTML -> RSS
-- file definitions -> database definitions
-- HTTP -> browser automation
-- YAML -> JSON
-
-must not require redesigning downstream monitoring logic.
-
-## 7. Version 1 Runtime
-
-The version 1 runtime is intentionally narrow:
-
-```text
-File source definitions
+File Source Definitions
         |
         v
-YAML decoder
+YAML Decoder
         |
         v
-Schema v1 validation
+Schema v1
         |
         v
 SourceConfig(type=html)
         |
         v
-HtmlSourceAdapter
+SourceRunner
+        |
+        v
+Adapter Registry
+        |
+        v
+HTMLSourceAdapter
         |
         +--> HTTP GET
         |
-        +--> HTML parsing
+        +--> HTML extraction
         |
         v
 MonitorItem[]
 ```
 
-## 8. Async Direction
+## 10. External Adapter Direction
 
-Source collection should use async I/O.
+When a real requirement appears for a non-Go adapter, the preferred evolution path is:
 
-Expected implementation direction:
+### Stage 1
 
-- `asyncio`
-- `httpx.AsyncClient`
+Native Go adapter.
 
-This is primarily because source monitoring is I/O-bound.
+### Stage 2
 
-Concurrency policy, scheduling policy, retry policy, and per-domain rate limits are not yet fully specified and should not be over-designed during the first implementation.
+External process adapter if cross-language support is needed but service separation is not.
 
-## 9. Configuration Reload Direction
+Conceptual model:
 
-The architecture should not assume source definitions are loaded only once forever.
+```text
+SignalWatch Go
+     |
+     +--> launch external process
+     |
+     +--> request on stdin
+     |
+     <-- response on stdout
+```
 
-`SourceDefinitionRepository` should expose a simple read/list capability that may be invoked repeatedly.
+The likely payload format would be JSON, but this is not yet a committed protocol.
 
-Do not add watch/subscription APIs yet.
+### Stage 3
 
-Future implementations may use:
+Only when scale or operational isolation requires it:
 
-- polling
-- repository revisions
-- database updates
-- ConfigMap watches
+```text
+SignalWatch Core
+     |
+     +--> remote adapter service
+```
 
-The current contract should not prevent these evolutions.
+Possible transports may include:
 
-## 10. Explicitly Unresolved Areas
+- HTTP
+- gRPC
 
-The following must remain open until separately designed:
+No transport is selected today.
 
-- exact `MonitorItem` schema
-- item identity rules
-- canonical URL rules
-- content hashing
-- first-run baseline behavior
-- NEW / UPDATED / UNCHANGED semantics
-- deletion semantics
-- persistence
-- scheduling
-- retries and backoff
-- rule engine
-- notification model
-- notification reliability/outbox semantics
+## 11. Cross-Language Contract Direction
 
-Subagents must not silently lock these into permanent architecture.
+If/when external adapters are introduced, the contract must be language-neutral.
+
+Potential future representations:
+
+- JSON Schema
+- protobuf
+
+However, this must wait until the `MonitorItem` domain model is intentionally designed.
+
+Do not freeze a cross-language schema based on the provisional v1 model.
+
+## 12. Explicitly Unresolved Areas
+
+The following remain intentionally unresolved:
+
+- final `MonitorItem` schema,
+- item identity,
+- canonical URL rules,
+- content hashing,
+- change detection,
+- baseline behavior,
+- deletion detection,
+- scheduling details,
+- retry/backoff,
+- persistence,
+- notification domain model,
+- delivery reliability,
+- external adapter transport,
+- protobuf / JSON Schema.

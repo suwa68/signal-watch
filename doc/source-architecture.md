@@ -2,247 +2,94 @@
 
 ## 1. Objective
 
-Source v1 should be simple enough to implement quickly while preserving clear extension points for:
+Implement a simple native Go source pipeline while preserving future extension to:
 
-- new config storage backends,
+- new storage backends,
 - new config encodings,
-- new config schema versions,
-- new source collection mechanisms.
+- new schema versions,
+- new Go adapters,
+- specialized adapters written in other languages.
 
-Version 1 only needs filesystem + YAML + static HTML.
+Version 1 is:
 
-## 2. Source Definition Repository
-
-### Contract
-
-Conceptually:
-
-```python
-from typing import Protocol
-
-
-class SourceDefinitionRepository(Protocol):
-    async def list(self) -> list["SourceDefinitionDocument"]:
-        ...
+```text
+File + YAML + HTML + Go
 ```
 
-The exact method name may be adjusted for Python conventions, but the responsibility must remain narrow.
+## 2. Repository Boundary
 
-### Version 1 implementation
+Conceptual Go contract:
 
-`FileSourceDefinitionRepository`
+```go
+type SourceDefinitionRepository interface {
+    List(ctx context.Context) ([]SourceDefinitionDocument, error)
+}
+```
+
+Version 1:
+
+```text
+FileSourceDefinitionRepository
+```
 
 Responsibilities:
 
-- discover source-definition files in a configured directory,
-- read their raw content,
-- return `SourceDefinitionDocument` objects,
-- attach enough origin information for useful errors,
-- optionally calculate a revision.
+- discover source definition files,
+- read bytes,
+- preserve origin information,
+- provide a revision if practical.
 
 Must not:
 
-- parse YAML semantics,
-- validate HTML selectors,
-- instantiate source adapters,
-- perform network requests.
+- parse YAML,
+- validate source semantics,
+- instantiate adapters,
+- perform source HTTP requests.
 
 ## 3. Source Definition Document
 
 Conceptual model:
 
-```python
-from dataclasses import dataclass
-
-
-@dataclass(frozen=True)
-class SourceDefinitionDocument:
-    key: str
-    content: str
-    revision: str | None = None
-    origin: str | None = None
+```go
+type SourceDefinitionDocument struct {
+    Key      string
+    Content  []byte
+    Revision string
+    Origin   string
+}
 ```
 
-`origin` is useful for diagnostics such as:
-
-```text
-/path/to/sources/murata.yaml
-```
-
-This model is infrastructure-neutral.
+The exact representation may be adjusted during implementation.
 
 ## 4. Config Decoder
 
-### Contract
+Conceptual contract:
 
-A decoder converts serialized content into a generic decoded representation.
-
-Conceptually:
-
-```python
-class ConfigDecoder(Protocol):
-    def decode(self, document: SourceDefinitionDocument) -> object:
-        ...
+```go
+type ConfigDecoder interface {
+    Decode(
+        document SourceDefinitionDocument,
+    ) (DecodedConfig, error)
+}
 ```
 
 Version 1:
 
-`YamlConfigDecoder`
+```text
+YAMLConfigDecoder
+```
 
-Do not couple `FileSourceDefinitionRepository` directly to PyYAML.
+Repository and decoder must remain independent.
 
-## 5. Schema Version
+## 5. Config Schema v1
 
-Every v1 source config must contain:
+Every definition contains:
 
 ```yaml
 version: 1
 ```
 
-Unknown versions must fail clearly.
-
-The initial implementation does not need a sophisticated migration framework.
-
-A small dispatcher/validator is sufficient, for example conceptually:
-
-```text
-version == 1 -> parse v1
-otherwise -> UnsupportedConfigVersion
-```
-
-The architecture should leave room for future migration/version handlers.
-
-## 6. Generic Runtime Configuration
-
-The top-level runtime model should remain source-type-neutral.
-
-Conceptual shape:
-
-```python
-@dataclass(frozen=True)
-class SourceConfig:
-    id: str
-    name: str
-    type: str
-    interval_seconds: int
-    config: Mapping[str, object]
-```
-
-The exact Python types may be improved during implementation.
-
-Important:
-
-- HTML selectors must not become permanent top-level fields of generic `SourceConfig`.
-- adapter-specific configuration belongs under `config`.
-- persistence metadata must not be added to this model.
-
-## 7. HTML Adapter Settings
-
-`HtmlSourceAdapter` may validate/convert `SourceConfig.config` into an adapter-specific typed settings model.
-
-Conceptually:
-
-```python
-@dataclass(frozen=True)
-class HtmlSourceSettings:
-    url: str
-    item_selector: str
-    title_selector: str
-    url_selector: str | None = None
-    content_selector: str | None = None
-```
-
-This gives type safety without making the generic config HTML-specific.
-
-## 8. Source Adapter Contract
-
-Conceptually:
-
-```python
-from typing import Protocol
-
-
-class SourceAdapter(Protocol):
-    async def collect(
-        self,
-        source: SourceConfig,
-    ) -> list["MonitorItem"]:
-        ...
-```
-
-Version 1 only implements:
-
-`HtmlSourceAdapter`
-
-This contract must stay small.
-
-Do not add methods for:
-
-- authentication,
-- pagination,
-- token refresh,
-- retries,
-- rate limiting,
-- rendering,
-- transformation pipelines.
-
-Those concerns can be designed when real requirements appear.
-
-## 9. Source Adapter Registry
-
-Use a registry so source type resolution does not become a growing conditional.
-
-Conceptual behavior:
-
-```python
-registry.register("html", html_adapter)
-adapter = registry.get(source.type)
-```
-
-Registry requirements:
-
-- explicit registration,
-- clear error for unsupported type,
-- no global mutable singleton required by domain code.
-
-## 10. Source Runner
-
-`SourceRunner` orchestrates adapter lookup and collection.
-
-Conceptually:
-
-```python
-class SourceRunner:
-    def __init__(self, registry: SourceAdapterRegistry):
-        self._registry = registry
-
-    async def run(self, source: SourceConfig) -> list[MonitorItem]:
-        adapter = self._registry.get(source.type)
-        return await adapter.collect(source)
-```
-
-It must not know about:
-
-- BeautifulSoup,
-- PyYAML,
-- filesystem paths,
-- database rows,
-- Kubernetes.
-
-## 11. HTML Source v1
-
-Supported behavior:
-
-1. perform HTTP GET,
-2. parse returned HTML,
-3. find item elements with a CSS selector,
-4. extract title,
-5. extract optional URL,
-6. resolve relative URLs using the source page URL,
-7. extract optional content,
-8. return `MonitorItem[]`.
-
-Recommended source definition:
+Recommended v1 example:
 
 ```yaml
 version: 1
@@ -263,123 +110,248 @@ config:
     content: ".summary"
 ```
 
-The exact interpretation of a URL selector should be simple in v1:
+Adapter-specific fields remain under `config`.
 
-- select an element,
-- read its `href`.
+The generic source model must not expose HTML selector fields directly.
 
-Title and content selectors should extract normalized visible text.
+## 6. SourceConfig
 
-Do not build a transformation DSL.
+Conceptual shape:
 
-## 12. HTTP Fetching
-
-The HTML implementation should keep HTTP access behind a small internal dependency so parsing can be tested independently.
-
-Expected direction:
-
-```text
-HtmlSourceAdapter
-    |
-    +--> HttpFetcher
-    |
-    +--> HtmlExtractor
+```go
+type SourceConfig struct {
+    ID              string
+    Name            string
+    Type            string
+    IntervalSeconds int
+    Config          map[string]any
+}
 ```
 
-or an equivalent structure.
+The concrete implementation may use a safer intermediate structure if preferred.
 
-Version 1 HTTP scope:
+Persistence metadata does not belong in `SourceConfig`.
 
-- GET only
-- reasonable timeout
-- static/server-rendered HTML
+## 7. Adapter-Specific Settings
 
-Do not add authentication or browser rendering.
+The HTML adapter should translate the generic `Config` block into typed settings.
 
-Exact retry policy is currently unresolved.
+Conceptually:
 
-## 13. MonitorItem
+```go
+type HTMLSourceSettings struct {
+    URL             string
+    ItemSelector    string
+    TitleSelector   string
+    URLSelector     string
+    ContentSelector string
+}
+```
 
-`MonitorItem` is the output boundary of the source layer.
+Optional fields may use pointers or empty values according to idiomatic Go.
 
-Its final schema is not yet fully designed.
+## 8. SourceAdapter
 
-For the current source implementation, create the smallest practical model needed to represent extracted items, but keep it easy to revise.
+Core Go contract:
 
-Likely fields may include:
+```go
+type SourceAdapter interface {
+    Collect(
+        ctx context.Context,
+        source SourceConfig,
+    ) ([]MonitorItem, error)
+}
+```
 
-- source identifier
-- title
-- URL
-- content
+Keep the interface small.
 
-Do not finalize permanent item identity or hashing semantics yet.
+Do not add methods for:
 
-## 14. File Layout Direction
+- authentication,
+- pagination,
+- rate limiting,
+- retry,
+- token refresh,
+- browser rendering,
+- external transport.
 
-A reasonable starting point:
+These are implementation concerns or future requirements.
+
+## 9. Adapter Registry
+
+The registry resolves:
 
 ```text
-app/
+html -> HTMLSourceAdapter
+```
+
+Future:
+
+```text
+rss -> RSSSourceAdapter
+json -> JSONAPISourceAdapter
+browser -> ExternalAdapter
+```
+
+Avoid spreading type-specific branching through application code.
+
+## 10. SourceRunner
+
+Conceptual responsibility:
+
+```go
+type SourceRunner struct {
+    registry SourceAdapterRegistry
+}
+```
+
+Runtime flow:
+
+```text
+SourceConfig
+    |
+    v
+registry lookup
+    |
+    v
+SourceAdapter.Collect
+    |
+    v
+MonitorItem[]
+```
+
+The runner must remain transport-agnostic.
+
+## 11. Native HTML Adapter v1
+
+Version 1 supports:
+
+- GET,
+- static/server-rendered HTML,
+- CSS selectors,
+- repeated item nodes,
+- title extraction,
+- optional URL extraction,
+- optional content extraction,
+- relative URL resolution.
+
+A focused HTML parsing library may be used.
+
+The exact library is an implementation choice.
+
+## 12. HTML Internal Structure
+
+Recommended internal boundary:
+
+```text
+HTMLSourceAdapter
+    |
+    +--> HTTPFetcher
+    |
+    +--> HTMLExtractor
+```
+
+This allows parsing tests without live network requests.
+
+Use Go's `context.Context` for cancellation.
+
+## 13. Provisional MonitorItem
+
+The final `MonitorItem` contract has not yet been designed.
+
+For v1, use the smallest reversible model required to represent extracted output.
+
+Likely provisional fields:
+
+```go
+type MonitorItem struct {
+    SourceID string
+    Title    string
+    URL      string
+    Content  string
+}
+```
+
+Do not introduce permanent:
+
+- item IDs,
+- hashes,
+- version fields,
+- event types.
+
+Those belong to later architecture work.
+
+## 14. Polyglot Extension Point
+
+A future external adapter must still satisfy the logical contract:
+
+```text
+SourceConfig -> MonitorItem[]
+```
+
+The Go interface is not itself the cross-language protocol.
+
+Do not confuse:
+
+```text
+Go interface
+```
+
+with:
+
+```text
+language-neutral adapter protocol
+```
+
+The language-neutral protocol will be designed later.
+
+## 15. Package Direction
+
+A reasonable Go layout is:
+
+```text
+internal/
 ├── config/
-│   ├── models.py
-│   ├── repository.py
-│   ├── file_repository.py
-│   ├── decoder.py
-│   └── yaml_decoder.py
+│   ├── model.go
+│   ├── repository.go
+│   ├── file_repository.go
+│   ├── decoder.go
+│   └── yaml_decoder.go
 │
 ├── source/
-│   ├── models.py
-│   ├── adapter.py
-│   ├── registry.py
-│   ├── runner.py
+│   ├── model.go
+│   ├── adapter.go
+│   ├── registry.go
+│   ├── runner.go
 │   └── html/
-│       ├── adapter.py
-│       ├── settings.py
-│       ├── fetcher.py
-│       └── parser.py
+│       ├── adapter.go
+│       ├── settings.go
+│       ├── fetcher.go
+│       └── extractor.go
 ```
 
-This is guidance, not a mandatory package tree. Prefer clarity over mirroring this tree exactly.
+This is guidance, not a rigid requirement.
 
-## 15. Required Tests
+## 16. Testing
 
-At minimum:
+Use:
 
-### File repository
+- table-driven tests,
+- local fixtures,
+- `httptest.Server` where network behavior is required.
 
-- reads supported definition files
-- ignores unrelated files if appropriate
-- produces useful origin information
-- handles unreadable/invalid paths clearly
+Tests should cover:
 
-### YAML decoder
-
-- valid YAML
-- malformed YAML
-- empty documents
-
-### Schema v1
-
-- valid v1 config
-- missing version
-- unsupported version
-- missing required generic fields
-- invalid adapter-specific config
-
-### Adapter registry
-
-- registered adapter lookup
-- unsupported type
-
-### HTML parser/adapter
-
-- multiple items
-- title extraction
-- optional content
-- optional URL
-- relative URL resolution
-- malformed/missing expected item fields
-- no matching items
-
-Do not use live websites in unit tests.
+- valid/invalid YAML,
+- schema version handling,
+- file discovery,
+- registry behavior,
+- unsupported types,
+- HTML extraction,
+- multiple items,
+- optional content,
+- optional URL,
+- relative URLs,
+- no matches,
+- malformed expected item content,
+- context cancellation where practical.

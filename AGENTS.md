@@ -1,283 +1,321 @@
 # AGENTS.md
 
-## Project Overview
+## Project
 
-This repository contains **Auto Alert**, a configurable source-monitoring and notification system.
+This repository contains **SignalWatch**.
 
-The long-term goal is to monitor external information sources, detect meaningful changes, evaluate rules, and deliver notifications to configured destinations such as Telegram.
+SignalWatch is a configurable source-monitoring and notification engine. It is intended to run continuously, collect data from external sources, normalize source-specific data into stable internal contracts, detect meaningful changes, evaluate rules, and deliver notifications.
 
-The project is intentionally starting small, but architectural boundaries must preserve future extensibility.
+The project should start as a modular monolith.
 
-## Current Implementation Scope
+## Current Language Direction
 
-The current implementation scope is limited to the parts already agreed upon:
+The **SignalWatch Core is implemented in Go**.
 
-1. Source-definition loading
-2. Source configuration decoding and validation
-3. Source adapter abstraction
-4. HTML source adapter v1
-5. Runtime orchestration from `SourceConfig` to `MonitorItem[]`
+Go is responsible for the long-running monitoring runtime and application orchestration, including:
 
-Do **not** design or implement the following beyond the minimum placeholders needed for compilation/tests:
+- configuration loading,
+- source runtime orchestration,
+- scheduling,
+- concurrency control,
+- persistence,
+- change detection,
+- rule evaluation,
+- notification routing,
+- Telegram delivery,
+- observability,
+- application lifecycle.
 
-- Change detection semantics
-- Baseline / first-run semantics
-- Rule engine behavior
-- Notification delivery semantics
-- Transactional outbox
-- Database persistence model
-- Deletion detection
-- LLM classification
-- Distributed workers
-- Redis / Kafka / RabbitMQ / Celery
-- Kubernetes-specific runtime logic
+Source adapters should be implemented in Go by default.
 
-These areas are intentionally left for later architecture discussions.
+However, the architecture must preserve the ability to implement specialized adapters in other languages when justified by ecosystem or tooling needs.
+
+Examples:
+
+- Python for Playwright-heavy browser automation,
+- Python for AI/NLP/data-processing integrations,
+- Java for domain-specific enterprise integrations,
+- any other runtime that can honor the Source Adapter contract.
+
+Do not force every future adapter to be written in Go.
+
+## Core Architecture Principle
+
+The most important source-side contract is:
+
+```text
+SourceConfig
+    |
+    v
+Source Adapter
+    |
+    v
+MonitorItem[]
+```
+
+The core runtime must not depend on how the adapter is implemented.
+
+A Go-native adapter and a future external adapter must be interchangeable from the perspective of `SourceRunner`.
+
+## Current Scope
+
+The current implementation scope is:
+
+1. Go project bootstrap
+2. source-definition repository abstraction
+3. file-based source-definition repository
+4. YAML decoding
+5. source config schema version 1
+6. source adapter abstraction
+7. adapter registry
+8. source runner
+9. native Go HTML source adapter
+10. provisional `MonitorItem`
+11. tests using local fixtures
+
+The first implementation must **not** introduce a second runtime or external adapter process yet.
+
+Polyglot support is an architectural extension point, not a v1 deployment requirement.
+
+## Do Not Implement Yet
+
+Do not make permanent decisions or large implementations for:
+
+- cross-language transport
+- gRPC
+- HTTP adapter services
+- subprocess adapter protocol
+- JSON Schema for `MonitorItem`
+- protobuf schemas
+- item identity
+- content hashing
+- change detection semantics
+- first-run baseline behavior
+- deletion semantics
+- rule engine
+- persistence
+- notification outbox
+- distributed workers
+- Redis
+- Kafka
+- RabbitMQ
+- Kubernetes runtime integration
+
+These topics remain intentionally open.
 
 ## Architecture Principles
 
-### 1. Simple implementation, stable boundaries
+### Simple implementation, stable boundaries
 
-Version 1 should be easy to understand and operate, but should not tightly couple implementation details to the rest of the system.
+Keep v1 operationally simple while preserving stable extension points.
 
-### 2. Normalize at the edge
+### Go by default, polyglot when justified
 
-All source types must eventually produce a common runtime representation:
+Do not introduce another language merely because it may be useful later.
 
-`SourceAdapter -> MonitorItem[]`
+Use another runtime only when a concrete adapter requirement justifies it.
 
-The monitoring pipeline must not depend on HTML, RSS, JSON, Kubernetes, or any source-specific storage mechanism.
+### Normalize at the edge
 
-### 3. Extend by adding implementations, not rewriting the pipeline
+Source-specific details must be converted into `MonitorItem` before entering downstream monitoring logic.
 
-Future source types should be added by implementing new adapters.
+### Extend by adding implementations
 
-Future source-definition storage backends should be added by implementing new repositories.
+New source types should be added as adapters.
 
-### 4. Infrastructure concerns must not leak into the domain
+New source-definition storage backends should be added as repositories.
 
-File paths, Kubernetes ConfigMaps, database row metadata, S3 ETags, YAML syntax, HTTP libraries, and BeautifulSoup objects must not leak into core runtime models.
+Avoid rewriting the core pipeline.
 
-### 5. Avoid premature abstraction
+### Infrastructure details must not leak into core models
 
-Only create abstractions that correspond to concrete extension points already identified in the architecture.
+The core must not depend on:
 
-Do not build a plugin framework, DSL, generic workflow engine, or distributed system.
+- YAML syntax,
+- filesystem paths,
+- Kubernetes ConfigMaps,
+- BeautifulSoup,
+- Playwright,
+- database row metadata,
+- transport-specific request types.
+
+### Avoid premature microservices
+
+A possible future Python adapter does not justify creating a Python service today.
 
 ## Core Contracts
 
-The following boundaries are considered important and should be preserved.
-
-### Source Definition Storage
-
-`SourceDefinitionRepository`
+### SourceDefinitionRepository
 
 Answers:
 
 > Where do source definitions come from?
 
-Version 1 implementation:
+Go-facing contract should be equivalent to:
 
-`FileSourceDefinitionRepository`
-
-Potential future implementations:
-
-- `DatabaseSourceDefinitionRepository`
-- `KubernetesSourceDefinitionRepository`
-- `S3SourceDefinitionRepository`
-
-Kubernetes ConfigMaps mounted as files should normally continue to use `FileSourceDefinitionRepository`.
-
-### Source Definition Document
-
-A repository returns a storage-neutral document.
-
-Conceptually:
-
-```python
-@dataclass(frozen=True)
-class SourceDefinitionDocument:
-    key: str
-    revision: str | None
-    content: str
+```go
+type SourceDefinitionRepository interface {
+    List(ctx context.Context) ([]SourceDefinitionDocument, error)
+}
 ```
-
-`revision` describes the revision of the specific definition instance, not the config schema version.
-
-Examples of possible future revision sources:
-
-- file content hash or mtime
-- database version column
-- Kubernetes `resourceVersion`
-- S3 ETag
-
-### Configuration Decoding
-
-`ConfigDecoder`
-
-Answers:
-
-> How is the raw source definition encoded?
 
 Version 1:
 
-`YamlConfigDecoder`
+`FileSourceDefinitionRepository`
 
-Potential future implementation:
+Future examples:
 
-`JsonConfigDecoder`
+- database repository
+- S3 repository
+- Kubernetes-aware repository
 
-A repository must not be responsible for understanding YAML semantics.
+A ConfigMap mounted as files should normally still use the file repository.
 
-### Config Schema Version
+### SourceDefinitionDocument
 
-Every source definition must include a schema version.
+Conceptually:
 
-Example:
+```go
+type SourceDefinitionDocument struct {
+    Key      string
+    Content  []byte
+    Revision string
+    Origin   string
+}
+```
+
+The exact Go representation may be adjusted if needed.
+
+`Revision` is distinct from config schema version.
+
+### Config decoding
+
+The repository does not parse YAML.
+
+A decoder handles serialization.
+
+Version 1:
+
+`YAMLConfigDecoder`
+
+### Source config schema version
+
+Every definition includes:
 
 ```yaml
 version: 1
 ```
 
-Schema version means:
+Unknown versions must fail clearly.
 
-> Which structure/semantics does this source definition use?
+### SourceAdapter
 
-It is distinct from document `revision`.
+Go-facing runtime contract:
 
-### Runtime Source Configuration
-
-Decoded and validated configuration becomes `SourceConfig`.
-
-`SourceConfig` must not expose persistence-specific metadata.
-
-It should contain generic top-level source information and adapter-specific configuration.
-
-### Source Adapter
-
-`SourceAdapter`
-
-Answers:
-
-> How is data collected from this source?
-
-Conceptual contract:
-
-```python
-class SourceAdapter(Protocol):
-    async def collect(
-        self,
-        source: SourceConfig,
-    ) -> list[MonitorItem]:
-        ...
+```go
+type SourceAdapter interface {
+    Collect(
+        ctx context.Context,
+        source SourceConfig,
+    ) ([]MonitorItem, error)
+}
 ```
 
 Version 1 implementation:
 
-`HtmlSourceAdapter`
+`HTMLSourceAdapter`
 
-Potential future implementations:
+Future implementations may be native Go adapters or external adapters.
 
-- `RssSourceAdapter`
-- `JsonApiSourceAdapter`
-- `BrowserSourceAdapter`
-- custom domain-specific adapters
+### SourceAdapterRegistry
 
-### Adapter Registry
+Resolve:
 
-Avoid large `if/elif` chains for adapter selection.
+```text
+source.type -> SourceAdapter
+```
 
-Use a small registry abstraction that resolves:
+Avoid large `switch`/`if` chains in runtime orchestration.
 
-`source.type -> SourceAdapter`
+### SourceRunner
 
-Version 1 only needs the `html` registration.
+`SourceRunner` resolves the adapter and executes collection.
+
+It must not know whether an adapter internally uses:
+
+- net/http,
+- goquery,
+- another Go library,
+- a subprocess,
+- gRPC,
+- HTTP,
+- Python,
+- Java.
 
 ## Source v1 Scope
 
 Source v1 supports:
 
-- public HTTP/HTTPS URLs
-- HTTP GET
-- static or server-rendered HTML
+- public HTTP/HTTPS
+- GET requests
+- static/server-rendered HTML
 - repeated item elements
 - CSS selector extraction
 - title extraction
-- URL extraction
-- content extraction
+- optional URL extraction
+- optional content extraction
 - relative URL resolution
 - YAML source definitions
 
 Source v1 does not support:
 
-- JavaScript rendering
+- browser rendering
 - authentication
-- cookies/session login
 - pagination
 - POST APIs
 - RSS
-- JSON APIs
-- CAPTCHA handling
+- JSON API adapters
+- CAPTCHA
 - anti-bot bypass
-- arbitrary transformation DSLs
+- custom transformation DSL
 
-## Source v1 Configuration
+## Go Implementation Guidance
 
-Recommended shape:
+Prefer standard library packages unless a focused library materially improves clarity.
 
-```yaml
-version: 1
+Expected baseline:
 
-id: murata_news
-name: Murata News
-type: html
+- Go 1.25+ if repository/toolchain permits; otherwise use the repository's chosen supported Go version
+- `context`
+- `net/http`
+- YAML library
+- focused HTML parsing library
+- Go standard testing package
 
-interval_seconds: 300
+Do not introduce a web framework, DI container, or message broker for this phase.
 
-config:
-  url: https://example.com/news
+## Testing
 
-  selectors:
-    item: ".news-item"
-    title: ".title"
-    url: "a"
-    content: ".summary"
-```
+Tests must not depend on live external websites.
 
-Keep adapter-specific fields under `config`.
+Use:
 
-The generic `SourceConfig` must not be permanently shaped around HTML selectors.
+- fixture YAML
+- fixture HTML
+- `httptest.Server` where HTTP behavior is needed
 
-## Technology Direction
+At minimum test:
 
-For the current implementation:
-
-- Python 3.12+
-- asyncio
-- httpx
-- BeautifulSoup
-- PyYAML
-- pytest
-
-A scheduler may be introduced later, but the first source-runtime implementation should be independently testable without scheduling.
-
-## Testing Expectations
-
-Core behavior must be testable without network access.
-
-At minimum, add tests for:
-
-- loading source definitions from files
+- file repository behavior
 - YAML decoding
 - schema version validation
-- invalid source definitions
-- adapter registry lookup
-- HTML parsing into `MonitorItem`
+- invalid definitions
+- registry lookup
+- unsupported source types
+- HTML extraction
+- optional fields
 - relative URL resolution
-- missing optional fields
-- unsupported adapter types
-
-Use fixture HTML rather than live external websites.
+- cancellation propagation where practical
 
 ## Security
 
@@ -285,33 +323,12 @@ Never commit:
 
 - Telegram bot tokens
 - API keys
-- passwords
-- private credentials
+- credentials
+- secrets
 
-Do not introduce secrets into source-definition examples unless they are placeholders.
-
-## Coding Expectations
-
-Prefer:
-
-- explicit types
-- small focused modules
-- dependency injection for I/O boundaries
-- deterministic parsing logic
-- immutable models when practical
-- clear errors with source-definition identity/context
-
-Avoid:
-
-- global mutable registries
-- source-specific behavior inside generic orchestration
-- direct YAML parsing inside runtime source adapters
-- direct file access inside config validation
-- premature generic frameworks
-
-## Before Finishing a Change
+## Before Completing Work
 
 1. Run relevant tests.
-2. Keep architecture documents synchronized with intentional architectural changes.
-3. Do not silently decide unresolved domain semantics.
-4. Summarize files changed, tests run, and any assumptions made.
+2. Keep architecture docs synchronized with intentional architecture changes.
+3. Do not silently finalize unresolved domain semantics.
+4. Report assumptions and deviations.
