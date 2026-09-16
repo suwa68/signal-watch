@@ -28,7 +28,9 @@ Notification Routing
 Delivery Adapters
 ```
 
-Only the source-definition and source-runtime portions are currently specified in detail.
+The source-definition and source-runtime portions and an isolated outbound
+Telegram destination are currently implemented. The stages connecting source
+items to completed notifications remain future work.
 
 ## 2. Architectural Style
 
@@ -341,7 +343,37 @@ However, this must wait until the `MonitorItem` domain model is intentionally de
 
 Do not freeze a cross-language schema based on the provisional v1 model.
 
-## 12. Explicitly Unresolved Areas
+## 12. Notification and Telegram v1
+
+The first delivery contract is independent of source collection and SDK types:
+
+```text
+notification.Notification
+        |
+        v
+telegram.Renderer (escaped HTML and summary length handling)
+        |
+        v
+telegram.Notifier (one SDK SendMessage call)
+        |
+        v
+telegram.Destination (ID and string ChatID)
+```
+
+`Notification` contains required plain-text `Title`, `Summary`, and `SourceName`,
+plus optional `URL` and `PublishedAt`. It contains no Telegram markup or NLP
+metadata. The mapping from `MonitorItem` to this completed delivery input is
+not yet designed.
+
+Application assembly provides one secret bot token to `telegram.New` and reuses
+the notifier for multiple destinations. The Telegram SDK stays inside
+`internal/notification/telegram`. Initialization uses `getMe`; sending does not
+start polling, webhooks, or handlers. No retry or delivery persistence is added.
+
+See [Telegram v1](telegram-v1.md) for the concrete API, rendering policies, and
+manual smoke test.
+
+## 13. Explicitly Unresolved Areas
 
 The following remain intentionally unresolved:
 
@@ -355,7 +387,8 @@ The following remain intentionally unresolved:
 - scheduling details,
 - retry/backoff,
 - persistence,
-- notification domain model,
+- producing `Notification` from source items (including NLP and rule evaluation),
+- destination routing and global notification configuration,
 - delivery reliability,
 - external adapter transport,
 - protobuf / JSON Schema.

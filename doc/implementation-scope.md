@@ -1,5 +1,9 @@
 # Initial Go Implementation Scope
 
+This document records the initial source-side iteration. The subsequent outbound
+Telegram iteration is documented in [Telegram v1](telegram-v1.md); Telegram's
+exclusion below applies only to this initial source-side scope.
+
 ## Objective
 
 Create the first Go implementation of the SignalWatch source-side architecture.
