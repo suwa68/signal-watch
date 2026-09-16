@@ -265,21 +265,32 @@ Likely provisional fields:
 
 ```go
 type MonitorItem struct {
-    SourceID string
-    Title    string
-    URL      string
-    Content  string
+    SourceID   string
+    ExternalID string
+
+    Title   string
+    URL     string
+    Content string
+
+    PublishedAt *time.Time
 }
 ```
 
+`ExternalID` and `PublishedAt` are optional and must remain source-provided.
+Adapters must not fabricate either value from observation time or internal
+state. The HTML v1 adapter does not add selectors for these fields.
+
 Do not introduce permanent:
 
-- item IDs,
-- hashes,
+- internal item IDs,
+- stored hashes,
 - version fields,
 - event types.
 
 Those belong to later architecture work.
+
+The downstream memory-state iteration derives a provisional v1 item key from
+this model. It does not make `MonitorItem` a final cross-language schema.
 
 ## 14. Polyglot Extension Point
 

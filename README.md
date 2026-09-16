@@ -2,7 +2,11 @@
 
 A configurable source-monitoring system designed to detect meaningful changes in external information and send notifications through channels such as Telegram.
 
-The current scope covers loading and validating YAML source definitions, extracting static HTML into a common `MonitorItem` model, and sending completed `Notification` values to Telegram. Producing notifications from source items, change detection, and alert rules remain future work.
+The current scope covers loading and validating YAML source definitions,
+extracting static HTML into a common `MonitorItem` model, establishing a
+process-local initial baseline, identifying unseen items, and sending completed
+`Notification` values to Telegram. Producing notifications from source items,
+durable state, richer change detection, and alert rules remain future work.
 
 See the [architecture documentation](doc/architecture.md) for details.
 

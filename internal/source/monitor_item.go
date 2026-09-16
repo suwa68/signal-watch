@@ -1,12 +1,19 @@
 package source
 
+import "time"
+
 // MonitorItem is the provisional normalized output of a source adapter.
 //
-// Identity, hashing, and change semantics are intentionally outside this v1
-// model while those domain contracts remain unresolved.
+// ExternalID and PublishedAt are optional source-provided identity candidates.
+// Item keys and seen-state remain downstream concerns, and this type is not a
+// final cross-language schema.
 type MonitorItem struct {
-	SourceID string
-	Title    string
-	URL      string
-	Content  string
+	SourceID   string
+	ExternalID string
+
+	Title   string
+	URL     string
+	Content string
+
+	PublishedAt *time.Time
 }
