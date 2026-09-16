@@ -8,6 +8,22 @@ SignalWatch is a configurable source-monitoring and notification engine. It is i
 
 The project should start as a modular monolith.
 
+## Feature Development Workflow
+
+Every feature must have a GitHub issue and be developed on its own branch.
+
+1. Before implementation, check for an existing issue covering the feature. Reuse
+   it when appropriate; otherwise create an issue describing the problem, scope,
+   non-goals, and acceptance criteria.
+2. Create and switch to a dedicated branch before editing feature code. Follow
+   the existing `feat/<feature-name>` convention and branch from `main` unless
+   the task explicitly specifies another base.
+3. Keep the feature's implementation, tests, and related documentation on that
+   branch. Do not commit feature work directly to `main`.
+4. When opening a pull request, reference the issue with `Closes #<number>` and
+   include the relevant validation results.
+5. Report the issue link and branch name when handing off the work.
+
 ## Current Language Direction
 
 The **SignalWatch Core is implemented in Go**.
@@ -72,6 +88,12 @@ The current implementation scope is:
 9. native Go HTML source adapter
 10. provisional `MonitorItem`
 11. tests using local fixtures
+12. transport-independent `Notification` v1 model
+13. outbound Telegram destination, HTML renderer, and single-attempt notifier
+14. explicit Telegram smoke command and local SDK integration tests
+
+Telegram v1 is specified in `doc/telegram-v1.md`. The notification model is a
+completed delivery input; deriving it from source items is not implemented yet.
 
 The first implementation must **not** introduce a second runtime or external adapter process yet.
 
