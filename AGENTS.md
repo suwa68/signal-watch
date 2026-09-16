@@ -91,6 +91,9 @@ The current implementation scope is:
 12. transport-independent `Notification` v1 model
 13. outbound Telegram destination, HTML renderer, and single-attempt notifier
 14. explicit Telegram smoke command and local SDK integration tests
+15. deterministic v1 item keys
+16. concurrency-safe in-memory seen-item state
+17. atomic first-success baseline handling
 
 Telegram v1 is specified in `doc/telegram-v1.md`. The notification model is a
 completed delivery input; deriving it from source items is not implemented yet.
@@ -109,10 +112,10 @@ Do not make permanent decisions or large implementations for:
 - subprocess adapter protocol
 - JSON Schema for `MonitorItem`
 - protobuf schemas
-- item identity
-- content hashing
-- change detection semantics
-- first-run baseline behavior
+- final item identity beyond the provisional v1 key strategy
+- content-diff hashing or snapshot semantics
+- change detection semantics beyond seen vs unseen
+- durable or cross-process baseline behavior
 - deletion semantics
 - rule engine
 - persistence

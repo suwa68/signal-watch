@@ -373,16 +373,37 @@ start polling, webhooks, or handlers. No retry or delivery persistence is added.
 See [Telegram v1](telegram-v1.md) for the concrete API, rendering policies, and
 manual smoke test.
 
-## 13. Explicitly Unresolved Areas
+## 13. In-Memory Item State and Baseline v1
+
+The first state iteration distinguishes only seen from unseen items. It derives
+a deterministic item key in this order:
+
+```text
+ExternalID -> URL -> PublishedAt + Title -> SHA-256(Title + Content)
+```
+
+Keys are scoped by `SourceID` in a concurrency-safe, process-local state store.
+The first successful collection atomically records all current keys and source
+initialization as a historical baseline, including when the collection is
+empty. Baseline items do not enter downstream processing. Later unseen items
+are returned with their keys but remain unseen until future orchestration marks
+them only after downstream delivery succeeds.
+
+An item without any usable deterministic identity fails that source's current
+processing attempt without terminating the process or partially establishing a
+baseline. This v1 state is intentionally lost on process restart and does not
+define update, deletion, or exactly-once semantics.
+
+## 14. Explicitly Unresolved Areas
 
 The following remain intentionally unresolved:
 
 - final `MonitorItem` schema,
-- item identity,
+- final item identity beyond the provisional v1 key strategy,
 - canonical URL rules,
-- content hashing,
-- change detection,
-- baseline behavior,
+- content-diff hashing and snapshots,
+- change detection beyond seen vs unseen,
+- durable and cross-process baseline behavior,
 - deletion detection,
 - scheduling details,
 - retry/backoff,
