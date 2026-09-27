@@ -20,7 +20,7 @@ const MaxMessageLength = 3800
 type Renderer struct{}
 
 // Render preserves title and metadata and truncates only the summary, before
-// escaping it. Metadata too large to leave room for a summary is rejected.
+// escaping it. An absent summary is omitted and reserves no space in the budget.
 // Timestamps retain the supplied time's location; no host timezone is consulted.
 func (Renderer) Render(message notification.Notification) (string, error) {
 	for _, field := range []struct {
@@ -28,7 +28,6 @@ func (Renderer) Render(message notification.Notification) (string, error) {
 		value string
 	}{
 		{"title", message.Title},
-		{"summary", message.Summary},
 		{"source name", message.SourceName},
 	} {
 		if strings.TrimSpace(field.value) == "" {
@@ -37,6 +36,9 @@ func (Renderer) Render(message notification.Notification) (string, error) {
 		if !utf8.ValidString(field.value) {
 			return "", fmt.Errorf("%s must be valid UTF-8", field.name)
 		}
+	}
+	if !utf8.ValidString(message.Summary) {
+		return "", fmt.Errorf("summary must be valid UTF-8")
 	}
 	if message.URL != "" {
 		parsed, err := url.Parse(message.URL)
@@ -57,6 +59,13 @@ func (Renderer) Render(message notification.Notification) (string, error) {
 	if message.URL != "" {
 		footerText += "\n\nView original"
 		footerHTML += "\n\n<a href=\"" + html.EscapeString(message.URL) + "\">View original</a>"
+	}
+
+	if strings.TrimSpace(message.Summary) == "" {
+		if textLength(title+footerText) > MaxMessageLength {
+			return "", fmt.Errorf("title/source metadata exceeds the %d-unit Telegram limit", MaxMessageLength)
+		}
+		return "<b>" + html.EscapeString(title) + "</b>" + footerHTML, nil
 	}
 
 	summaryBudget := MaxMessageLength - textLength(title+"\n\n"+footerText)

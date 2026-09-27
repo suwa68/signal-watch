@@ -113,7 +113,6 @@ func TestRendererRejectsInvalidFields(t *testing.T) {
 		field  string
 	}{
 		{"empty title", func(n *notification.Notification) { n.Title = "" }, "title"},
-		{"blank summary", func(n *notification.Notification) { n.Summary = " \n\t" }, "summary"},
 		{"empty source", func(n *notification.Notification) { n.SourceName = "" }, "source name"},
 		{"invalid title UTF-8", func(n *notification.Notification) { n.Title = "\xff" }, "UTF-8"},
 		{"invalid summary UTF-8", func(n *notification.Notification) { n.Summary = "\xff" }, "UTF-8"},
@@ -262,4 +261,69 @@ func parseRendered(t *testing.T, rendered string) (string, []string) {
 		}
 	}
 	return visible.String(), links
+}
+
+func TestRendererWithoutSummary(t *testing.T) {
+	t.Parallel()
+	for _, summary := range []string{"", " \n\t\u3000"} {
+		for _, withURL := range []bool{false, true} {
+			for _, withTime := range []bool{false, true} {
+				message := exampleNotification()
+				message.Title = "News <中文> & 🚀"
+				message.SourceName = "Source <&>"
+				message.Summary = summary
+				message.URL = "https://example.com/?a=1&b=2"
+				want := "<b>🔔 News &lt;中文&gt; &amp; 🚀</b>\n\n<b>Source:</b> Source &lt;&amp;&gt;"
+				if withTime {
+					want += "\n<b>Published:</b> 2026-09-15 10:30 CST"
+				} else {
+					message.PublishedAt = nil
+				}
+				if withURL {
+					want += "\n\n<a href=\"https://example.com/?a=1&amp;b=2\">View original</a>"
+				} else {
+					message.URL = ""
+				}
+				got, err := (Renderer{}).Render(message)
+				if err != nil || got != want {
+					t.Fatalf("summary=%q URL=%v time=%v: Render() = %q, %v; want %q", summary, withURL, withTime, got, err, want)
+				}
+				parseRendered(t, got)
+			}
+		}
+	}
+}
+
+func TestRendererWithoutSummaryBudget(t *testing.T) {
+	t.Parallel()
+	for _, withMetadata := range []bool{false, true} {
+		for _, unit := range []string{"&", "中", "🚀"} {
+			for _, delta := range []int{-1, 0, 1} {
+				message := notification.Notification{SourceName: "S", Summary: " \t"}
+				footer := "\n\nSource: S"
+				if withMetadata {
+					message.URL = "https://example.com"
+					message.PublishedAt = exampleNotification().PublishedAt
+					footer += "\nPublished: 2026-09-15 10:30 CST\n\nView original"
+				}
+				budget := MaxMessageLength + delta - len(utf16.Encode([]rune("🔔 "+footer)))
+				units := len(utf16.Encode([]rune(unit)))
+				message.Title = strings.Repeat(unit, budget/units) + strings.Repeat("x", budget%units)
+				got, err := (Renderer{}).Render(message)
+				if delta > 0 {
+					if err == nil || got != "" {
+						t.Fatal("oversized summary-free message accepted")
+					}
+					continue
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				visible, _ := parseRendered(t, got)
+				if visible != "🔔 "+message.Title+footer || len(utf16.Encode([]rune(visible))) != MaxMessageLength+delta {
+					t.Fatal("summary-free boundary message changed")
+				}
+			}
+		}
+	}
 }
