@@ -2,7 +2,7 @@
 
 Date: 2026-09-27 (Asia/Taipei)
 Repository baseline: `main@85c9363f281dcaea109d414ccc78e56bf7dc1ae4`
-Status: Implemented and validated on `feat/source-query-v1`; pull request pending.
+Status: Implemented and validated on `feat/source-query-v1`; pull request #12 open.
 Audience: Project maintainer and implementation agent.
 Feature issue: https://github.com/suwa68/signal-watch/issues/11
 Implementation branch: `feat/source-query-v1`
@@ -277,7 +277,8 @@ The other accepted product path is a complete task definition. Validate it with 
 ## 11. Implementation and client evidence
 
 Implementation uses issue [#11](https://github.com/suwa68/signal-watch/issues/11)
-and branch `feat/source-query-v1`. It adds the shared query service and catalog,
+and [pull request #12](https://github.com/suwa68/signal-watch/pull/12) from branch
+`feat/source-query-v1`. It adds the shared query service and catalog,
 JSON CLI, stdio MCP server, generic calling-AI instructions, architecture and
 usage documentation, and the behavioral tests specified above.
 
