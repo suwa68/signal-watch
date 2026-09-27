@@ -464,7 +464,39 @@ destination changes and independent fan-out tracking remain outside this slice.
 See [Notification orchestration v1](notification-orchestration-v1.md) for the
 assembly example, full run semantics, and credential-free integration scenario.
 
-## 15. Explicitly Unresolved Areas
+## 15. Read-only Query v1
+
+Query v1 is a second application path over the existing source runtime:
+
+```text
+validated immutable source catalog
+        |
+        +--> list_sources (no website fetch)
+        |
+        +--> collect_source / source-query
+                    |
+                    v
+              SourceRunner.Run
+                    |
+                    v
+              Query JSON v1
+```
+
+The catalog retains each decoded configuration with the revision of the exact
+definition bytes. CLI invocations load it once per command; the MCP server loads
+it once at startup. Every definition, registered source type, and adapter
+settings block is validated before any source is collected. The MCP server uses
+an immutable catalog for concurrent calls and must restart to observe file
+changes.
+
+Queries call `SourceRunner` directly. They never call the notification pipeline,
+read or change seen state, or send Telegram messages. They preserve adapter
+order and repeated items. A dedicated versioned DTO bounds the returned item
+count and Unicode content length while keeping the provisional `MonitorItem`
+internal. Collection and publication time remain distinct, and Query v1 never
+claims that selected HTML text is a complete article.
+
+## 16. Explicitly Unresolved Areas
 
 The following remain intentionally unresolved:
 

@@ -98,12 +98,19 @@ The current implementation scope is:
 19. caller-driven application notification orchestration with one bound destination
 20. sequential unseen-item delivery and seen marking after successful delivery
 21. per-pipeline overlap rejection and caller-context cancellation handling
+22. read-only Query v1 service, JSON CLI, and local stdio MCP tools
 
 Telegram v1 is specified in `doc/telegram-v1.md`; application assembly and run
 semantics are specified in `doc/notification-orchestration-v1.md`. The pipeline
 maps original source-item metadata to a completed `Notification` with an empty
 summary. It reuses one process-local store across runs and introduces no NLP,
 scheduler, durable retry, or destination routing.
+
+Query v1 loads and validates a source catalog, then calls `SourceRunner`
+directly. It exposes current source data through a JSON CLI and read-only MCP
+tools without reading or changing seen state or sending notifications. The MCP
+catalog is loaded once at startup and collection uses a 15-second server-side
+deadline within the caller deadline.
 
 The first implementation must **not** introduce a second runtime or external adapter process yet.
 
