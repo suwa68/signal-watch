@@ -102,6 +102,36 @@ Docker Compose keeps the Go module and build caches in named volumes between run
 An example version 1 source definition is available at
 [`examples/sources/example.yaml`](examples/sources/example.yaml).
 
+### First live HTML source
+
+The bundled [`signalwatch-commits.yaml`](examples/sources/signalwatch-commits.yaml)
+collects commit titles and links from this repository's public `main` commit
+page. It uses the existing HTML adapter and needs no credentials. The
+`example_news` definition remains a schema example; its URL is a placeholder.
+
+To inspect the live source through the local JSON CLI:
+
+```sh
+docker compose run --rm go go run ./cmd/source-query \
+  --sources-dir ./examples/sources \
+  --source-id signalwatch_commits
+```
+
+If the tunnel mounts `./examples/sources`, pull this change and restart its
+container so the MCP server reloads the catalog:
+
+```sh
+docker compose --env-file .env.tunnel.local -f compose.tunnel.yaml restart tunnel
+```
+
+In a new ChatGPT conversation with `@SignalWatch`, call `list_sources` and
+confirm `signalwatch_commits` appears, then call `collect_source` with that ID.
+Check that at least one item has a commit title and an absolute GitHub commit
+URL. The adapter does not provide commit dates or full commit content. GitHub
+can change its HTML markup, so recheck the selectors if collection becomes
+empty or fails. A successful local query does not by itself verify the hosted
+ChatGPT call.
+
 ## Notification orchestration v1
 
 `application.NewPipeline(collector, store, sender)` assembles the existing source
