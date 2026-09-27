@@ -94,9 +94,16 @@ The current implementation scope is:
 15. deterministic v1 item keys
 16. concurrency-safe in-memory seen-item state
 17. atomic first-success baseline handling
+18. optional Telegram summaries with metadata-only fallback rendering
+19. caller-driven application notification orchestration with one bound destination
+20. sequential unseen-item delivery and seen marking after successful delivery
+21. per-pipeline overlap rejection and caller-context cancellation handling
 
-Telegram v1 is specified in `doc/telegram-v1.md`. The notification model is a
-completed delivery input; deriving it from source items is not implemented yet.
+Telegram v1 is specified in `doc/telegram-v1.md`; application assembly and run
+semantics are specified in `doc/notification-orchestration-v1.md`. The pipeline
+maps original source-item metadata to a completed `Notification` with an empty
+summary. It reuses one process-local store across runs and introduces no NLP,
+scheduler, durable retry, or destination routing.
 
 The first implementation must **not** introduce a second runtime or external adapter process yet.
 

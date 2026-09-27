@@ -1,5 +1,10 @@
 # Handoff: In-Memory State and Baseline v1
 
+This document preserves the original state-layer assignment. Notification
+orchestration was added subsequently; see
+[Notification orchestration v1](../notification-orchestration-v1.md) for current
+application behavior. Scope exclusions below describe the original assignment.
+
 ## Objective
 
 Implement the smallest useful item-state layer for **SignalWatch v1**.
@@ -79,6 +84,13 @@ SignalWatch v1 prefers:
 > duplicate notification over missing notification.
 
 The intended behavior is approximately **at-least-once**.
+
+**Current delivery-policy clarification:** this historical preference is not a
+durable at-least-once guarantee. The current pipeline retries only when a later
+caller-driven run collects the failed item again with the same identity and
+relevant state still exists. Disappearing items have no pending snapshot, and a
+process restart creates a new silent baseline. An uncertain send or a successful
+send followed by a failed state write can produce a duplicate.
 
 If downstream notification succeeds and SignalWatch crashes before recording the item as seen, the item may be processed and delivered again later.
 
@@ -395,6 +407,15 @@ do not MarkItemSeen
 ```
 
 The item should remain eligible for reprocessing.
+
+**Current NLP/fallback policy:** the implemented orchestration has no NLP stage
+and sends an empty-summary notification using original item metadata. A future
+summarization failure may also produce this fallback notification; successful
+fallback delivery can then mark the item seen. NLP failure alone therefore
+does not require leaving the item unseen when fallback delivery succeeds.
+Mapping/send failures still leave items unseen, and failed completion writes
+remain errors. This note supersedes the historical NLP-failure rule above
+without implying that the original state-layer iteration implemented delivery.
 
 If notification succeeds but the process crashes before `MarkItemSeen`, a duplicate notification may occur later.
 

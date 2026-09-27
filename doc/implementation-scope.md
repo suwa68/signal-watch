@@ -1,8 +1,11 @@
 # Initial Go Implementation Scope
 
 This document records the initial source-side iteration. The subsequent outbound
-Telegram iteration is documented in [Telegram v1](telegram-v1.md); Telegram's
-exclusion below applies only to this initial source-side scope.
+Telegram iteration is documented in [Telegram v1](telegram-v1.md), and the
+subsequent source-to-delivery flow in
+[Notification orchestration v1](notification-orchestration-v1.md). Exclusions
+below apply only to this initial source-side scope; the current implementation
+also includes process-local baseline/deduplication and notification orchestration.
 
 ## Objective
 
