@@ -8,7 +8,7 @@ import "time"
 // plain text. Summary is optional; empty or whitespace-only means absent.
 // All supplied text must be valid UTF-8. URL and the source-provided PublishedAt
 // are optional.
-// Producing this model from MonitorItem remains a downstream concern.
+// Application orchestration maps unseen source items into this delivery input.
 type Notification struct {
 	Title       string
 	Summary     string

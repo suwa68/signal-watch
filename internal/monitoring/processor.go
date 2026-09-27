@@ -18,7 +18,7 @@ var (
 )
 
 // UnseenItem carries the stable key needed to mark an item seen only after its
-// future downstream processing succeeds.
+// downstream notification delivery succeeds.
 type UnseenItem struct {
 	Item source.MonitorItem
 	Key  string

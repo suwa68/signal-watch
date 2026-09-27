@@ -4,9 +4,11 @@ A configurable source-monitoring system designed to detect meaningful changes in
 
 The current scope covers loading and validating YAML source definitions,
 extracting static HTML into a common `MonitorItem` model, establishing a
-process-local initial baseline, identifying unseen items, and sending completed
-`Notification` values to Telegram. Producing notifications from source items,
-durable state, richer change detection, and alert rules remain future work.
+process-local initial baseline, and delivering later unseen items to Telegram.
+The callable application pipeline creates notifications from original item
+metadata with an empty summary and marks items seen only after successful
+delivery. NLP, scheduling, durable state, richer change detection, and alert
+rules remain future work.
 
 See the [architecture documentation](doc/architecture.md) for details.
 
@@ -39,11 +41,48 @@ Docker Compose keeps the Go module and build caches in named volumes between run
 An example version 1 source definition is available at
 [`examples/sources/example.yaml`](examples/sources/example.yaml).
 
+## Notification orchestration v1
+
+`application.NewPipeline(collector, store, sender)` assembles the existing source
+runner and baseline/deduplication processor with a bound notification sender.
+Call `pipeline.RunOnce(ctx, sourceConfig)` repeatedly in the same process, reusing
+the pipeline and memory store. The first successful collection, including an
+empty collection, establishes a silent baseline. Later new items are delivered
+sequentially with their original title, source name, optional URL and publication
+time, and no summary.
+
+Mapping, send, and seen-state write failures are retained in an aggregate error.
+Later items are still attempted while the caller context remains active. Only
+the caller's `ctx.Err()` stops new items; a sender's own timeout or cancellation
+does not stop the run. Overlapping calls on one pipeline return
+`application.ErrRunInProgress` before collection.
+
+Run the credential-free integration scenario:
+
+```sh
+docker compose run --rm go go test ./internal/application -run TestPipelineFromYAMLToNotifications -v
+```
+
+It loads a temporary YAML definition, collects changing HTML from a local server,
+and uses the real Telegram renderer with a recording sender. Repeated calls
+demonstrate a silent A/B baseline, delivery of C from A/B/C, and suppression of C
+on the next run. It sends no Telegram messages.
+
+State is process-local: restarting establishes a new silent baseline. Failed
+items can be tried on a later call only if they are collected again with the
+same identity. There is no durable pending-item snapshot or delivery guarantee;
+an uncertain send or failed state write can cause a duplicate. Keep the single
+destination binding stable for the pipeline's lifetime.
+
+See [Notification orchestration v1](doc/notification-orchestration-v1.md) for
+assembly, error semantics, caller-driven runs, and limitations.
+
 ## Telegram destination v1
 
 Telegram delivery uses one bot per process and accepts multiple destinations.
-It renders escaped HTML, truncates long summaries, disables link previews, and
-sends once per notification.
+It renders escaped HTML, omits absent summaries, truncates long summaries,
+disables link previews, and sends once per notification. Each application
+pipeline binds one destination explicitly.
 
 For a real smoke test, first create a bot and grant it channel posting permission.
 Create `.env.telegram.local` in the project root (ignored by Git) and fill in:

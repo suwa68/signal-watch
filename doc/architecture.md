@@ -28,9 +28,10 @@ Notification Routing
 Delivery Adapters
 ```
 
-The source-definition and source-runtime portions and an isolated outbound
-Telegram destination are currently implemented. The stages connecting source
-items to completed notifications remain future work.
+The source-definition/runtime portions, process-local baseline/deduplication,
+and outbound Telegram destination are connected by a callable application
+pipeline. It sends original item metadata without an NLP summary. Rules,
+scheduling, durable state, and destination routing remain future work.
 
 ## 2. Architectural Style
 
@@ -363,11 +364,13 @@ telegram.Destination (ID and string ChatID)
 `Notification` contains required plain-text `Title` and `SourceName`, plus
 optional `Summary`, `URL`, and `PublishedAt`. Empty or whitespace-only summaries
 are omitted without placeholders. It contains no Telegram markup or NLP
-metadata. The mapping from `MonitorItem` to this completed delivery input is
-not yet designed.
+metadata. The application pipeline maps the original item title, optional URL
+and publication time, and configured source name into this delivery input with
+an empty summary. It does not copy item content into the summary.
 
 Application assembly provides one secret bot token to `telegram.New` and reuses
-the notifier for multiple destinations. The Telegram SDK stays inside
+the notifier for multiple destinations. Each application pipeline binds one
+stable destination through a sender function. The Telegram SDK stays inside
 `internal/notification/telegram`. Initialization uses `getMe`; sending does not
 start polling, webhooks, or handlers. No retry or delivery persistence is added.
 
@@ -387,15 +390,81 @@ Keys are scoped by `SourceID` in a concurrency-safe, process-local state store.
 The first successful collection atomically records all current keys and source
 initialization as a historical baseline, including when the collection is
 empty. Baseline items do not enter downstream processing. Later unseen items
-are returned with their keys but remain unseen until future orchestration marks
-them only after downstream delivery succeeds.
+are returned with their keys but remain unseen until the application pipeline
+marks them after downstream delivery succeeds.
 
 An item without any usable deterministic identity fails that source's current
 processing attempt without terminating the process or partially establishing a
 baseline. This v1 state is intentionally lost on process restart and does not
 define update, deletion, or exactly-once semantics.
 
-## 14. Explicitly Unresolved Areas
+## 14. Application Notification Orchestration v1
+
+```text
+Pipeline.RunOnce(ctx, SourceConfig)
+        |
+        v
+SourceRunner.Run -> MonitorItem[]
+        |
+        v
+Processor.ProcessSuccessfulCollection
+        |
+        +--> first success: atomic silent baseline (including empty)
+        |
+        +--> already seen: ignore
+        |
+        v
+unseen item + processor key, in collection order
+        |
+        v
+Notification (original metadata, empty Summary)
+        |
+        v
+bound NotificationSender -> Telegram
+        |
+        +--> failure: retain error, leave unseen
+        |
+        v
+successful send -> StateStore.MarkItemSeen
+```
+
+`internal/application` depends on the collector, notification model, and state
+contracts. It creates the existing processor with the same store used to mark
+delivery completion. The orchestration algorithm imports no Telegram SDK types;
+application assembly binds the notifier and explicit destination through
+`NotificationSenderFunc`.
+
+Collection errors, including errors accompanied by partial items, bypass the
+processor. Processor errors prevent delivery for that attempt. Mapping, send,
+and state-write errors retain source/item/stage context and allow later items
+to proceed while the caller context remains active. `RunOnce` returns joined
+errors that preserve `errors.Is` and `errors.As` behavior.
+
+The caller's context passed to `RunOnce` is the authority for stopping new
+items. A non-nil `ctx.Err()` is joined with accumulated failures, including
+when cancellation occurs during the final item. A sender-local timeout or
+cancellation error remains an item failure when `ctx.Err() == nil`; its error
+type alone does not terminate the run. State writes use the caller context,
+without a background-context completion attempt.
+
+One pipeline instance rejects overlapping calls with `ErrRunInProgress` before
+collection. Its guard is released on every exit and does not coordinate other
+pipeline instances or processes. A concurrent-safe store by itself cannot
+prevent duplicate sends.
+
+The application reuses its pipeline, memory store, notifier, and destination
+between caller-driven runs. There is no scheduler or retry loop. Retry requires
+the same item to be collected again; a failed item that disappears from the
+source has no durable pending snapshot. A restart loses state and establishes
+a new silent baseline. An uncertain send outcome or a failed write after a
+successful send can cause duplicates; neither exactly-once nor durable
+at-least-once delivery is promised. State is scoped by source/item, so dynamic
+destination changes and independent fan-out tracking remain outside this slice.
+
+See [Notification orchestration v1](notification-orchestration-v1.md) for the
+assembly example, full run semantics, and credential-free integration scenario.
+
+## 15. Explicitly Unresolved Areas
 
 The following remain intentionally unresolved:
 
@@ -409,8 +478,8 @@ The following remain intentionally unresolved:
 - scheduling details,
 - retry/backoff,
 - persistence,
-- producing `Notification` from source items (including NLP and rule evaluation),
+- NLP enrichment and rule evaluation before notification delivery,
 - destination routing and global notification configuration,
-- delivery reliability,
+- durable delivery guarantees,
 - external adapter transport,
 - protobuf / JSON Schema.

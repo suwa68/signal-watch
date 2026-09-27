@@ -10,9 +10,12 @@ Implemented from [the Telegram handoff](handoffs/telegram-v1-implementation.md):
 completed Notification -> Telegram HTML renderer -> SDK SendMessage -> Destination
 ```
 
-This is an independently callable delivery component. Source collection is not
-yet connected to notification production. NLP, rules, routing, persistence,
-retry policy, and outbox behavior remain unresolved. The bot receives no updates.
+This remains an independently callable delivery component. The
+[application pipeline](notification-orchestration-v1.md) now connects source
+collection and baseline/deduplication to notifications with original metadata
+and empty summaries, binding one stable destination. NLP, rules, routing,
+persistence, retry policy, and outbox behavior remain unresolved. The bot
+receives no updates.
 
 The dependency is `github.com/go-telegram/bot v1.27.0`, pinned in `go.mod` and
 verified by `go.sum`. The SDK is the HTTP client implementation; SignalWatch
@@ -60,8 +63,10 @@ func (*Notifier) Send(ctx context.Context, destination Destination, message noti
 
 Application assembly supplies the token to `New` once per process and reuses
 that notifier for any number of destinations. The package does not read the
-environment or define the project's global configuration system. The smoke
-command is the current assembly example. Both destination fields must be
+environment or define the project's global configuration system. See the smoke
+command for standalone delivery and the
+[orchestration assembly example](notification-orchestration-v1.md#assembly-and-lifetime)
+for repeated monitoring runs. Both destination fields must be
 nonblank. `ChatID` accepts a numeric ID as a string or a supported `@username`.
 
 Only the Telegram infrastructure package imports SDK types. Its one-method
@@ -137,6 +142,14 @@ retry-after value. No retry takes place here. The smoke command exits nonzero on
 configuration, initialization, or send failure. It gives delivery a 20-second
 context deadline and handles interrupt/termination signals; SDK startup retains
 its separate timeout.
+
+In the application pipeline, only the caller context passed to `RunOnce`
+determines whether new items may start. A wrapped sender-local
+`context.DeadlineExceeded` or `context.Canceled` leaves that item unseen and
+does not prevent later items while `ctx.Err() == nil`. If the caller context
+is canceled, the pipeline stops starting items and joins its context error
+with accumulated failures. A successful send is followed by seen marking;
+a failed state write or uncertain send outcome can cause a later duplicate.
 
 ## Channel setup and manual smoke test
 
