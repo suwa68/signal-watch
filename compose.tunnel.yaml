@@ -1,0 +1,39 @@
+services:
+  tunnel:
+    build:
+      context: .
+      dockerfile: Dockerfile.tunnel
+      target: runtime
+    init: true
+    restart: unless-stopped
+    environment:
+      CONTROL_PLANE_TUNNEL_ID: ${CONTROL_PLANE_TUNNEL_ID:-}
+      CONTROL_PLANE_API_KEY: ${CONTROL_PLANE_API_KEY:-}
+    volumes:
+      - type: bind
+        source: ${SIGNALWATCH_SOURCES_DIR:-./examples/sources}
+        target: /sources
+        read_only: true
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/readyz"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  tunnel-smoke:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: Dockerfile.tunnel
+      target: smoke
+    init: true
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp

@@ -1,0 +1,11 @@
+# Only send build inputs. Local credentials and source catalogs stay on the host.
+**
+!Dockerfile.tunnel
+!go.mod
+!go.sum
+!cmd/
+!cmd/**
+!internal/
+!internal/**
+!integration/
+!integration/**

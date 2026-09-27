@@ -92,7 +92,7 @@ the repository already behaves this way.
 | Delivery success | Call `MarkItemSeen` using the key returned by the processor |
 | Retry | No retry loop inside `RunOnce`; a later caller-driven run can encounter the item again |
 | Runtime | No scheduler or full daemon in this slice |
-| Private sources | Keep the user's 591 implementation and country-specific private source definitions outside this public repository |
+| Source examples | Include only non-sensitive, reproducible source definitions in this public repository |
 
 ### Non-goals
 

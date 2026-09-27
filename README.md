@@ -33,15 +33,14 @@ docker compose run --rm -T go go run ./cmd/signalwatch-mcp \
   --sources-dir ./examples/sources
 ```
 
-To use a locally built server with Codex CLI, register its executable as a
-stdio MCP server:
+To use the Docker-hosted server with Codex CLI, register Docker as the stdio
+command. Replace the repository path with this checkout's absolute path:
 
 ```sh
-mkdir -p bin
-docker compose run --rm go go build -o ./bin/signalwatch-mcp ./cmd/signalwatch-mcp
 codex mcp add signalwatch -- \
-  /absolute/path/to/signalwatch-mcp \
-  --sources-dir /absolute/path/to/source-definitions
+  docker compose -f /absolute/path/to/signal-watch/compose.yaml \
+  run --rm -T go go run ./cmd/signalwatch-mcp \
+  --sources-dir /workspace/examples/sources
 ```
 
 ChatGPT web is the intended recurring-analysis client. Its hosted environment
@@ -49,6 +48,30 @@ does not read local Codex MCP configuration; connect the server through a
 developer-mode plugin and Secure MCP Tunnel when those account and workspace
 capabilities are available. See the generic calling-AI instructions in
 [`examples/ai/query-analysis.md`](examples/ai/query-analysis.md).
+
+### ChatGPT through Secure MCP Tunnel (all Docker)
+
+The tunnel client and SignalWatch run in one container and communicate over
+stdio. The host needs Docker Compose; it does not need Go or tunnel-client.
+No host ports or Docker socket are mounted into the container.
+
+Build and validate locally without an API key or an OpenAI Tunnel:
+
+```sh
+docker compose -f compose.tunnel.yaml build tunnel
+docker compose -f compose.tunnel.yaml run --build --rm tunnel-smoke
+```
+
+The smoke test runs the official tunnel client's local proxy, discovers and
+calls both SignalWatch tools, and collects a local HTML fixture with external
+networking disabled. This validates the container path; actual ChatGPT access
+still requires a Platform Tunnel and ChatGPT developer-mode connection.
+
+See [Docker MCP Tunnel setup](doc/docker-mcp-tunnel.md) for runtime credentials,
+source mounts, startup, diagnostics, and ChatGPT acceptance steps.
+The [September 28 setup record](doc/signalwatch-chatgpt-tunnel-setup-2026-09-28.md)
+records a successful ChatGPT `list_sources` call through the hosted tunnel.
+Collection from a real website remains the next acceptance step.
 
 ## Development
 
