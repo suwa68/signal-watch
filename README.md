@@ -12,6 +12,44 @@ rules remain future work.
 
 See the [architecture documentation](doc/architecture.md) for details.
 
+## Query v1
+
+Query v1 exposes current configured source data without reading or changing
+monitoring state and without sending notifications. The JSON CLI loads and
+validates every definition before collecting one exact source ID:
+
+```sh
+docker compose run --rm go go run ./cmd/source-query \
+  --sources-dir ./examples/sources \
+  --source-id example_news
+```
+
+The read-only MCP server loads the catalog once at startup and serves
+`list_sources` and `collect_source` over stdio. Restart it after definition
+changes:
+
+```sh
+docker compose run --rm -T go go run ./cmd/signalwatch-mcp \
+  --sources-dir ./examples/sources
+```
+
+To use a locally built server with Codex CLI, register its executable as a
+stdio MCP server:
+
+```sh
+mkdir -p bin
+docker compose run --rm go go build -o ./bin/signalwatch-mcp ./cmd/signalwatch-mcp
+codex mcp add signalwatch -- \
+  /absolute/path/to/signalwatch-mcp \
+  --sources-dir /absolute/path/to/source-definitions
+```
+
+ChatGPT web is the intended recurring-analysis client. Its hosted environment
+does not read local Codex MCP configuration; connect the server through a
+developer-mode plugin and Secure MCP Tunnel when those account and workspace
+capabilities are available. See the generic calling-AI instructions in
+[`examples/ai/query-analysis.md`](examples/ai/query-analysis.md).
+
 ## Development
 
 The Go toolchain runs in Docker, so Go does not need to be installed on the host.
