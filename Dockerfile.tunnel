@@ -1,0 +1,40 @@
+# syntax=docker/dockerfile:1
+ARG TUNNEL_CLIENT_IMAGE=ghcr.io/openai/tunnel-client:v0.0.15@sha256:119799b778ba8411a124f53588f9dc837fd62ba03e5fadf77d675123c92ab58e
+
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS build
+ARG TARGETOS
+ARG TARGETARCH
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -o /out/signalwatch-mcp ./cmd/signalwatch-mcp
+
+FROM build AS smoke-build
+COPY integration/ ./integration/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go test -c -o /out/tunnel-smoke ./integration/tunnel
+
+FROM ${TUNNEL_CLIENT_IMAGE} AS runtime
+USER root
+RUN addgroup -g 10001 signalwatch \
+    && adduser -D -u 10001 -G signalwatch signalwatch
+COPY --from=build /out/signalwatch-mcp /usr/local/bin/signalwatch-mcp
+ENV HOME=/home/signalwatch \
+    MCP_COMMAND="/usr/local/bin/signalwatch-mcp --sources-dir /sources"
+WORKDIR /home/signalwatch
+USER 10001:10001
+ENTRYPOINT ["/usr/bin/tunnel-client"]
+CMD ["run"]
+
+FROM runtime AS smoke
+COPY --from=smoke-build /out/tunnel-smoke /usr/local/bin/tunnel-smoke
+ENV SIGNALWATCH_TUNNEL_INTEGRATION=1
+ENTRYPOINT ["/usr/local/bin/tunnel-smoke"]
+CMD ["-test.v", "-test.timeout=60s"]

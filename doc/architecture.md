@@ -496,6 +496,21 @@ count and Unicode content length while keeping the provisional `MonitorItem`
 internal. Collection and publication time remain distinct, and Query v1 never
 claims that selected HTML text is a complete article.
 
+### Docker Tunnel deployment
+
+For private ChatGPT access, the optional `compose.tunnel.yaml` deployment bundles
+the official OpenAI tunnel-client and `signalwatch-mcp` in one Linux container.
+The client initiates the outbound OpenAI connection and launches the existing
+MCP executable as a stdio child. Source definitions are a read-only `/sources`
+mount, and credentials are supplied at runtime. This adds no HTTP listener to
+SignalWatch and changes no core adapter or query contracts.
+
+Run only one active client per tunnel ID for stdio transport. Source catalog
+changes require restarting the container. The credential-free Docker smoke
+test uses the tunnel client's loopback development proxy and local HTML, while
+the hosted ChatGPT path is a separate account-dependent acceptance check.
+See [Docker MCP Tunnel setup](docker-mcp-tunnel.md).
+
 ## 16. Explicitly Unresolved Areas
 
 The following remain intentionally unresolved:
