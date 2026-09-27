@@ -283,3 +283,32 @@ func TestSDKInFlightCancellation(t *testing.T) {
 		t.Fatal("Send did not return after cancellation")
 	}
 }
+
+func TestNotifierWithoutSummary(t *testing.T) {
+	t.Parallel()
+	for _, oversized := range []bool{false, true} {
+		message := notification.Notification{Title: "News", SourceName: "Example"}
+		if oversized {
+			message.Title = strings.Repeat("🚀", MaxMessageLength)
+		}
+		calls := 0
+		n := &Notifier{client: senderFunc(func(_ context.Context, params *bot.SendMessageParams) (*models.Message, error) {
+			calls++
+			if params.Text != "<b>🔔 News</b>\n\n<b>Source:</b> Example" || params.ParseMode != models.ParseModeHTML {
+				t.Errorf("unexpected summary-free message: %+v", params)
+			}
+			if params.LinkPreviewOptions == nil || params.LinkPreviewOptions.IsDisabled == nil || !*params.LinkPreviewOptions.IsDisabled {
+				t.Error("link previews must be disabled")
+			}
+			return &models.Message{}, nil
+		})}
+		err := n.Send(context.Background(), Destination{ID: "news", ChatID: "@test_channel"}, message)
+		if oversized {
+			if err == nil || calls != 0 {
+				t.Fatalf("oversized message: error=%v, calls=%d", err, calls)
+			}
+		} else if err != nil || calls != 1 {
+			t.Fatalf("summary-free send: error=%v, calls=%d", err, calls)
+		}
+	}
+}

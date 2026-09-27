@@ -360,8 +360,9 @@ telegram.Notifier (one SDK SendMessage call)
 telegram.Destination (ID and string ChatID)
 ```
 
-`Notification` contains required plain-text `Title`, `Summary`, and `SourceName`,
-plus optional `URL` and `PublishedAt`. It contains no Telegram markup or NLP
+`Notification` contains required plain-text `Title` and `SourceName`, plus
+optional `Summary`, `URL`, and `PublishedAt`. Empty or whitespace-only summaries
+are omitted without placeholders. It contains no Telegram markup or NLP
 metadata. The mapping from `MonitorItem` to this completed delivery input is
 not yet designed.
 

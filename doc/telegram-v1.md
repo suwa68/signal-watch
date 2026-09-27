@@ -40,8 +40,9 @@ type Notification struct {
 }
 ```
 
-`Title`, `Summary`, and `SourceName` are required plain text. `Summary` is the
-final concise delivery summary, with no NLP response envelope. `PublishedAt`
+`Title` and `SourceName` are required plain text. `Summary` is optional; empty
+or whitespace-only means absent. Supplied summary bytes must still be valid
+UTF-8. It has no NLP response envelope. `PublishedAt`
 is a source-provided timestamp, not the delivery time.
 
 Telegram API:
@@ -81,6 +82,18 @@ Murata has announced adjustments to selected MLCC product lines.
 <a href="https://example.com/news/123">View original</a>
 ```
 
+Without a summary, the section is omitted completely:
+
+```html
+<b>🔔 Murata Announces MLCC Product Changes</b>
+
+<b>Source:</b> Murata News
+
+<a href="https://example.com/news/123">View original</a>
+```
+
+The optional timestamp follows the source line in either form.
+
 - All external text and link attributes are HTML-escaped. Required text must
   contain non-whitespace content and valid UTF-8; otherwise rendering fails.
 - An empty URL omits the link. A supplied URL must be an absolute HTTP/HTTPS URL
@@ -99,8 +112,10 @@ Murata has announced adjustments to selected MLCC product lines.
   a trailing `…`. Truncation happens before HTML escaping, at Unicode code point
   boundaries, so it does not cut UTF-8 or HTML entities. It does not promise to
   preserve combined graphemes such as an entire multi-code-point emoji sequence.
-- If metadata leaves no room for even an ellipsis, rendering returns an error
-  before an SDK call. One notification is never split into multiple messages.
+- With a summary, metadata that leaves no room for even an ellipsis is rejected.
+  Without a summary, the actual title-plus-footer message is accepted up to and
+  including 3800 units; no summary space or ellipsis is reserved. Oversized
+  messages fail before an SDK call. Notifications are never split.
 
 The fixed limit, explicit oversized-metadata error, UTF-8/URL validation, and
 input timezone policy are implementation choices within the handoff's renderer
