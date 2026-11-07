@@ -49,7 +49,10 @@ Deferred capabilities require explicit scope approval. Approval lifts only the
 specific deferral being approved; all other deferrals remain in force.
 Do not silently finalize unresolved domain semantics.
 
-Without specific scope approval, do not introduce:
+The following capabilities remain outside the approved
+implementation scope. Do not make permanent design
+decisions or implement them without specific approval.
+Exploratory analysis does not constitute implementation approval.
 
 - External adapter runtimes/processes or cross-language transports, including gRPC,
   HTTP adapter services, subprocess protocols, JSON Schema for `MonitorItem`, or protobuf.
