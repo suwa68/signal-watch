@@ -40,6 +40,14 @@ and independent reviews. Do not impose a fixed subagent count.
 Ordinary status questions do not suspend already authorized work unless the user
 explicitly requests a pause.
 
+## Design Review
+
+Before approving significant architecture changes, obtain
+an independent, code-grounded review of correctness,
+failure modes, and validation feasibility.
+
+Resolve blocking findings and disclose remaining risks.
+
 ## Scope & Deferrals
 
 Existing v1 behavior is a baseline, not a permanent restriction on explicitly
