@@ -13,6 +13,8 @@ import (
 
 var ErrMissingTitle = errors.New("required title is missing")
 
+const maxItems = 1000
+
 // ItemError adds the zero-based item index and field to an extraction error.
 type ItemError struct {
 	Index int
@@ -47,6 +49,9 @@ func (e *HTMLExtractor) Extract(reader io.Reader, baseURL *url.URL, sourceID str
 	}
 
 	matches := document.Find(settings.ItemSelector)
+	if matches.Length() > maxItems {
+		return nil, fmt.Errorf("matched items exceed %d-item limit", maxItems)
+	}
 	items := make([]source.MonitorItem, 0, matches.Length())
 	var extractionErr error
 
