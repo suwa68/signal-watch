@@ -24,6 +24,16 @@ Every feature must have a GitHub issue and be developed on its own branch.
    include the relevant validation results.
 5. Report the issue link and branch name when handing off the work.
 
+## Execution Choices
+
+Once execution scope is approved, the Parent chooses the execution method and
+number of implementation subagents unless the user specifies them. Preserve all
+applicable Superpowers skill requirements, including concurrency restrictions
+and independent reviews. Do not impose a fixed subagent count.
+
+Ordinary status questions do not suspend already authorized work unless the user
+explicitly requests a pause.
+
 ## Current Language Direction
 
 The **SignalWatch Core is implemented in Go**.
@@ -73,9 +83,12 @@ The core runtime must not depend on how the adapter is implemented.
 
 A Go-native adapter and a future external adapter must be interchangeable from the perspective of `SourceRunner`.
 
-## Current Scope
+## Existing v1 Scope
 
-The current implementation scope is:
+This section describes the established v1 slice, not a permanent restriction on
+explicitly approved future development.
+
+The established v1 scope includes:
 
 1. Go project bootstrap
 2. source-definition repository abstraction
@@ -117,6 +130,9 @@ The first implementation must **not** introduce a second runtime or external ada
 Polyglot support is an architectural extension point, not a v1 deployment requirement.
 
 ## Do Not Implement Yet
+
+Explicit approval lifts only the specific deferred scope being approved. All
+other deferrals remain in force.
 
 Do not make permanent decisions or large implementations for:
 
