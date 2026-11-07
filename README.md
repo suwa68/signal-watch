@@ -73,6 +73,33 @@ The [September 28 setup record](doc/signalwatch-chatgpt-tunnel-setup-2026-09-28.
 records a successful ChatGPT `list_sources` call through the hosted tunnel.
 Collection from a real website remains the next acceptance step.
 
+### Public HTML source example
+
+[`signalwatch-commits.yaml`](examples/sources/signalwatch-commits.yaml) targets
+this repository's public GitHub `main` commit page with the existing HTML
+adapter. It extracts commit titles and links without credentials. The
+`example_news` definition remains a schema example with a placeholder URL.
+
+Run the deterministic check without contacting GitHub:
+
+```sh
+docker compose run --rm -T go go test ./internal/source/html \
+  -run '^TestRealSourceCommittedYAML' -count=1 -v
+```
+
+To inspect current public HTML manually with the JSON CLI:
+
+```sh
+docker compose run --rm -T go go run ./cmd/source-query \
+  --sources-dir ./examples/sources \
+  --source-id signalwatch_commits
+```
+
+Fixture verification does not establish that GitHub's current markup still
+matches or that ChatGPT can collect through the hosted tunnel. See
+[real source verification](doc/real-source-verification.md) for fixture
+provenance, output limitations, and the remaining manual acceptance steps.
+
 ## Development
 
 The Go toolchain runs in Docker, so Go does not need to be installed on the host.
