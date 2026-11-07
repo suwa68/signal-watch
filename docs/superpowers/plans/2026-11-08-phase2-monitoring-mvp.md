@@ -1,9 +1,11 @@
 # SignalWatch Phase 2 — proposed architecture and implementation plan
 
-Status: REVIEW DRAFT. This plan does not authorize Phase 2 implementation,
-dependency installation, merge, deployment, or real Telegram sends.
-The user's request approves scheduling, durable monitoring state, and Docker monitoring runtime in principle,
-and explicitly requires stopping for plan review before implementation.
+Status: APPROVED FOR IMPLEMENTATION. On 2026-11-08, after PR #30 merged, the user
+explicitly instructed "start phase 2 implementation". This authorizes the reviewed
+scheduling, durable monitoring state and Docker runtime scope and disclosed
+trade-offs. Merge/deployment and real Telegram sends remain unauthorized.
+The review-era proposal wording below records design provenance; use the
+[execution plan](2026-11-08-phase2-execution.md) and implementation handoff for current progress.
 
 Repository baseline inspected: `suwa68/signal-watch`, clean `main`,
 `092b5e47c77b9714336338920c6442e3994c3959`, 2026-11-08 Asia/Taipei.
