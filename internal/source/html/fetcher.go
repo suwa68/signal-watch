@@ -68,7 +68,7 @@ func (f *HTTPFetcher) Fetch(ctx context.Context, sourceURL string) (*FetchResult
 	}
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		_, _ = io.CopyN(io.Discard, response.Body, 4<<10)
+		// Do not wait for an irrelevant error body to finish streaming.
 		_ = response.Body.Close()
 		return nil, &HTTPStatusError{
 			URL:        finalURL.String(),
