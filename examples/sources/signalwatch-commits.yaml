@@ -1,0 +1,15 @@
+version: 1
+
+id: signalwatch_commits
+name: SignalWatch main commits
+type: html
+
+interval_seconds: 300
+
+config:
+  url: https://github.com/suwa68/signal-watch/commits/main
+
+  selectors:
+    item: 'li[data-testid="commit-row-item"]'
+    title: 'h4 a[href*="/commit/"]'
+    url: 'h4 a[href*="/commit/"]'
