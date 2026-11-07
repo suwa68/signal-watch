@@ -1,0 +1,26 @@
+name: Optional tunnel smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tunnel-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Credential-free Docker smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build and run local tunnel fixture
+        run: docker compose --env-file /dev/null -f compose.tunnel.yaml run --build --rm -T --no-deps tunnel-smoke
