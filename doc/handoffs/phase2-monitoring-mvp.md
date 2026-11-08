@@ -44,7 +44,7 @@ aggregation, NLP, brokers/distributed workers, merge or deployment.
 | 1 — durable state | Complete; independently approved after fix round 1 | Original42b577a + fix202688a; final focused/state race/full/Darwin execution and Linux amd64/arm64 builds pass |
 | 2 — scheduler | Complete; independently approved | 206c71b + tracking-only9c7e14a; runtime/race/Pipeline/full checks passed; no review findings |
 | 3 — daemon | Complete; independently approved after fix round 1 | Fresh executor from2840fe5; initial12bf8d0 + fatal-boundary fixb7515ca; actual command/race/vet and helper evidence below |
-| 4 — Compose/acceptance | Not started | Read-only fixture feasibility investigation can overlap earlier tasks |
+| 4 — Compose/acceptance | Implemented and locally validated; awaiting Parent independent review | Scratch production image, offline SDK/TLS Compose acceptance, full/race/vet/platform checks passed; evidence below |
 
 The Parent's plan-local progress ledger/briefs/reports are under
 `.superpowers/sdd/2026-11-08-phase2-execution/`. That directory is ignored scratch;
@@ -97,42 +97,20 @@ do not rerun it in a sandbox permission-failure loop.
 
 ## Next steps
 
-The next executor implements Task 3 only from this tracked handoff, the execution
-plan/Task 3 brief, AGENTS.md and actual code. This is a fresh-context rehearsal;
-do not claim genuine new-session execution. Record gaps before relying on Parent
-conversation memory. Start with `git status --short --branch` and
-`git log -6 --oneline`; skip completed Tasks 1/2. Parent commits this handoff before
-dispatch; the commit containing this checkpoint is the Task 3 BASE.
+Parent independently reviews the Task 4 commit, then the complete branch against
+the approved spec, resolving material findings before final handoff. Push/PR/CI
+coordination belongs to Parent. Verify current-head `Test and vet` and
+`Monitoring acceptance` asynchronously; every push invalidates earlier-head
+results. No merge, deployment, real Telegram, or additional product scope is
+approved by this checkpoint. Tasks 1/2/3 are accepted; do not reimplement them.
 
-Storage APIs: `state.OpenSQLite(ctx,directory) (*SQLiteStateStore,error)`, concrete
-`Close() error`, and `state.ErrUnavailable`/`state.ErrFatal`. Keep the four methods
-unchanged, pre-init marks allowed, files `state.db`/`.signalwatch.lock`, driver
-modernc.org/sqlite v1.59.0. Do not alter accepted store lifetimes for assembly.
-
-Task 2's fixed integration API is `runtime.Run(ctx, []ScheduledSource, report)
-error`, with `ScheduledSource{Config config.SourceConfig; Runner Runner}` and
-`Runner.RunOnce(context.Context, config.SourceConfig) error`. The report function
-receives config and completed run error (including nil), is optional, concurrent
-across source workers and must return promptly. Zero source list/blank IDs,
-duplicates, nil runners and duration overflow are rejected before goroutines.
-It owns source-loop coordination only, not signals, storage or notifier lifetimes.
-
-For Task 3, existing `query.LoadHTMLCatalog` returns a Query Service, not a raw
-Pipeline Collector. The execution plan specifies one small shared composition
-helper `query.LoadHTMLCatalogAndRunner(ctx,directory,client)` returning catalog and
-SourceRunner, with the old loader retained as wrapper. Preserve Query entrypoints,
-validation and state isolation; do not copy the registry/validation block or pass
-query DTOs through monitoring.
-
-Parent accepts only a committed task plus actual test evidence and independent
-spec/quality review; no parallel implementation agents under the selected SDD skill.
-Implement cmd/signalwatch's CLI/env validation, one Pipeline per source, shared
-store/notifier, safe structured logs and bounded signal lifecycle. Write failing
-tests first, preserve query APIs through the helper above, use private test seams
-without production fake flags, then run Task 3 checks/commit/report for review.
-Task 4's production image/TLS fixtures/Compose and Monitoring acceptance job remain
-unimplemented. Final acceptance requires current-head Test and vet plus the new
-Monitoring acceptance job and a broad independent review; do not merge or deploy.
+Storage remains `state.OpenSQLite(ctx,directory)` with concrete `Close()`,
+`ErrUnavailable`/`ErrFatal`, the four StateStore methods, modernc v1.59.0 and
+`state.db`/`.signalwatch.lock`. Scheduling remains `runtime.Run(ctx,sources,report)`;
+report follows the entire RunOnce return. Query composition keeps
+`LoadHTMLCatalogAndRunner` and the original wrapper. No accepted core API changed
+for packaging. The task sections below retain historical implementation/review
+evidence; the latest Task 4 section is the current runtime checkpoint.
 
 ## Task 3 fresh-context continuation rehearsal (2026-11-08)
 
@@ -260,3 +238,104 @@ Parent scoped independent re-review accepted I1 as addressed, with no new
 findings. It verified command cancellation before reporting/join, retained fatal
 causes and no active-store Close on timeout; no test reruns were needed. Task 4
 is the next incomplete task and remains unimplemented at this checkpoint.
+
+## Task 4 production image and offline acceptance (2026-11-09)
+
+Implemented from reviewed checkpoint `9285cdada17700535ed5ca5633110297aad9d78b`
+on `feat/phase2-monitoring-mvp`, issue #31 / draft PR #32. The Task 4 commit is the
+commit introducing this section; use current Git history for its exact SHA.
+Validation below ran that implementation tree before its documentation commit,
+with the recorded parent SHA plus the working Task 4 diff. Parent independent
+task/whole-branch reviews and final-head Actions are still pending. No accepted
+state/scheduler/daemon code, tunnel behavior or branch protection was changed.
+
+`Dockerfile.monitor` builds the ordinary binary into scratch with system CAs and
+an image-owned 0700 `/state` directory for UID/GID10001. Its dedicated context
+allowlist excludes hidden files, tests, catalogs and credentials. Production
+Compose has read-only sources/root, capabilities dropped, no-new-privileges,
+init, `unless-stopped`, a retained named volume and a15-second stop grace.
+[Operations/acceptance](../monitor-compose.md) describes upgrades, state deletion,
+restart-loop diagnostics, filesystem assumptions and delivery limits.
+
+One test fixture image provides HTML, ephemeral TLS for `api.telegram.org`,
+loopback control and a stopped-volume inspector. The unchanged monitor image
+uses its normal SDK with only test-overlay `SSL_CERT_FILE` trust injection.
+Resolved configuration asserts internal-only networking, no ports/socket mount,
+explicit empty upper/lower proxy variables, literal synthetic credentials,
+read-only sources/CA, unchanged command/entrypoint and controlled restart policy.
+The production policy is resolved and asserted separately. Fresh-volume ownership
+comes from the production image, never fixture chown. Inspector opens `mode=ro`
+after a nonblocking ownership lock, checks exact source/key sets and10001:10001
+metadata, and is demonstrably refused while the monitor owns the directory.
+
+Executable scenarios proved silent A/B and empty baselines; first post-empty E
+sends; retained C suppression after recreation and ordinary restart; beta C
+failure with D successful/seen, then only C sent on recollection; beta progress
+while alpha's HTTP request remains held; second-owner fatal rejection before
+getMe; canceled HTTP requests and clean signal exit0; and ordinary committed
+SIGKILL exit137/reopen with exact state and no duplicate sends. The fixture
+checks actual SDK multipart fields and exact escaped HTML including the real
+renderer, parse mode and disabled previews. Held successful replies establish
+this barrier: receive request, capture completed-run cursor, release reply,
+observe a later successful RunOnce completion, stop, then inspect SQLite.
+No receipt-only inference or wall-clock sleep establishes a commit. Log reads
+are bounded snapshots rather than unmanaged follow processes. The second-owner
+process has a12-second bound and is reaped. Cleanup is scoped to the generated
+project and succeeded; it never prunes images or unrelated resources.
+
+RED evidence: four meaningful fixture tests failed against not-implemented
+handlers/barriers/log parsing; the pre-packaging executable acceptance failed
+because `compose.monitor.yaml` was absent. Additional resolved-config regressions
+failed for missing Telegram TLS alias and an overridden production entrypoint,
+then passed after strict validation. Self-review added a failing regression for
+a canceled-and-replaced alpha request falsely satisfying a simple held snapshot;
+the final check rejects any new held/canceled alpha event during beta progress.
+The final full/race/vet/Compose checks were refreshed after that fixture fix.
+The first built integration run exposed an
+inspector-profile omission in the harness's resolved config; it failed closed,
+was corrected, and subsequent complete runs passed. A fixture listener type
+compile error was corrected before focused GREEN. These were Task 4 harness
+rework, with no application/core corrections.
+
+Final local commands (all exit0):
+
+```sh
+integration/monitor/acceptance.sh
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go test ./... -count=1 -timeout=5m
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T -e CGO_ENABLED=1 -e CC=gcc go go test -race ./... -count=1 -timeout=5m
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go vet ./...
+```
+
+Go1.25.14 Linux/arm64, Docker Composev5.3.1. Full suite: daemon10.256s,
+fixture0.013s, state1.260s; full race: daemon14.397s, fixture1.044s,
+state5.550s; vet no diagnostics. Ordinary tunnel integration remains skipped
+without its separate runtime; no new tunnel acceptance is claimed.
+Final offline project: `sw-acceptance-1794156958-5967`, successfully cleaned.
+Actual monitor image/platform:
+`sha256:41738293a6b51d77aebf16398146953d9232f8fe2ef5acadde736e3ac9c53e72`,
+Linux/arm64; fixture image:
+`sha256:cffaa43fa0656b3e26979d43fee95b9b7949f8aeae9b81bddd4b62dac6690bf7`.
+The monitor image ID was identical at scenario start/end. Supplemental ignored
+evidence is in `.superpowers/sdd/monitor-acceptance/sw-acceptance-1794156958-5967/`
+(resolved models, image/platform IDs, per-stage logs, ledger, exit/cleanup data)
+and `.superpowers/sdd/2026-11-08-phase2-execution/task-4-logs/` (RED/GREEN,
+full/race/vet/build/native logs). Essential claims above do not depend on scratch.
+
+Cross-builds used the same Docker Go toolchain with `CGO_ENABLED=0`: `go build
+-trimpath ./cmd/signalwatch` for Linux/amd64, Linux/arm64 and Darwin/arm64, plus
+`GOOS=darwin GOARCH=arm64 go test -c ./internal/state`. Output binaries stayed in
+ignored scratch. The Darwin/arm64 monitor `--help` and full state test executable
+actually ran on the Darwin/arm64 host and exited0 (including actual-driver,
+ownership, COMMIT-BUSY and helper crash tests). Linux/amd64 has compile evidence
+only here; Linux/arm64 has actual Docker suite/production-image execution. The
+new required CI job will execute its own runner platform after Parent pushes.
+
+This acceptance is committed-state process-kill continuity, not physical power
+loss or a deterministic production post-send/pre-mark crash. Task1/3 helper
+crash evidence remains a separate tier. No real Telegram/live website, hosted
+ChatGPT connection, deployment, universal filesystem support, exactly-once
+promise, or current-head remote CI success is claimed. The new15-minute
+`Monitoring acceptance` workflow job keeps read-only/credential-free policy and
+uploads seven-day synthetic evidence. `Test and vet` and tunnel behavior remain
+unchanged. Parent owns final review, fresh-head asynchronous CI and the separate
+four-goal autonomy record; no independent reviewer was spawned by this author.

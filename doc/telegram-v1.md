@@ -248,3 +248,11 @@ and Telegram API errors (400, 401, 403, 429) without retries. Fakes and local
 - [Telegram LinkPreviewOptions](https://core.telegram.org/bots/api#linkpreviewoptions)
 - [Telegram channel administrator rights](https://core.telegram.org/bots/api#chatmemberadministrator)
 - [go-telegram/bot v1.27.0](https://github.com/go-telegram/bot/tree/v1.27.0)
+
+## Production monitor acceptance
+
+The [Compose monitor guide](monitor-compose.md) documents nonroot named-volume ownership,
+retained state across restart/recreation, failure and shutdown assumptions, and
+the offline unchanged-image SDK/TLS acceptance. Its committed-state SIGKILL
+results are distinct from synchronized helper crash windows and do not establish
+exactly-once delivery or real Telegram/network availability.

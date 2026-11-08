@@ -1,0 +1,11 @@
+version: 1
+id: beta
+name: 'beta & Co'
+type: html
+interval_seconds: 1
+config:
+  url: http://fixture:8080/beta
+  selectors:
+    item: article
+    title: h2
+    url: a

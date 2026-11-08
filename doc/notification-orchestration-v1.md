@@ -263,3 +263,11 @@ docker compose run --rm go go vet ./...
 docker compose run --rm go go test ./...
 docker compose run --rm go go test -race ./...
 ```
+
+## Production monitor acceptance
+
+The [Compose monitor guide](monitor-compose.md) documents nonroot named-volume ownership,
+retained state across restart/recreation, failure and shutdown assumptions, and
+the offline unchanged-image SDK/TLS acceptance. Its committed-state SIGKILL
+results are distinct from synchronized helper crash windows and do not establish
+exactly-once delivery or real Telegram/network availability.

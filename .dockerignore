@@ -9,3 +9,5 @@
 !internal/**
 !integration/
 !integration/**
+
+!Dockerfile.monitor

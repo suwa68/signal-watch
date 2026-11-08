@@ -1,0 +1,26 @@
+services:
+  monitor:
+    image: ${SIGNALWATCH_MONITOR_IMAGE:-signalwatch-monitor:local}
+    build:
+      context: .
+      dockerfile: Dockerfile.monitor
+    user: "10001:10001"
+    init: true
+    read_only: true
+    restart: unless-stopped
+    stop_grace_period: 15s
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      SIGNALWATCH_TELEGRAM_BOT_TOKEN: ${SIGNALWATCH_TELEGRAM_BOT_TOKEN:?Set the Telegram bot token}
+      SIGNALWATCH_TELEGRAM_CHAT_ID: ${SIGNALWATCH_TELEGRAM_CHAT_ID:?Set the Telegram chat ID}
+    volumes:
+      - type: bind
+        source: ${SIGNALWATCH_SOURCES_DIR:-./sources}
+        target: /sources
+        read_only: true
+        bind:
+          create_host_path: false
+      - monitor-state:/state
+volumes:
+  monitor-state:

@@ -32,8 +32,9 @@ The source-definition/runtime portions, baseline/deduplication, and outbound
 Telegram destination are connected by a callable application pipeline. The
 monitor command adds fixed-delay scheduling and SQLite state retained across
 restarts. It sends original item metadata without an NLP summary. Rules and
-destination routing remain future work; production monitor packaging and offline
-acceptance are pending Phase 2 Task 4.
+destination routing remain future work. A minimal nonroot Compose service now
+packages the ordinary monitor binary with retained named-volume state; its
+offline acceptance exercises that unchanged image.
 
 ## 2. Architectural Style
 
@@ -472,8 +473,13 @@ fatal/cleanup errors occur or the fixed 10-second grace expires. Startup and
 completed-run JSON logs identify each source; error output redacts the bot token
 and Telegram request URLs and truncates variable fields. Final diagnostics have
 a 25-millisecond best-effort flush budget so blocked output cannot hold exit;
-normal operational output may backpressure workers. Runtime packaging and
-production-image acceptance remain pending Phase 2 Task 4.
+normal operational output may backpressure workers. The production scratch image
+contains only the monitor binary, CA certificates and an owned state directory.
+Compose uses read-only sources/root, a retained named state volume, init,
+`unless-stopped` restart and a 15-second stop grace. A separate internal-network
+fixture exercises actual SDK TLS and ordinary committed SIGKILL continuity;
+precise crash windows remain helper-tier evidence. See
+[Compose operations and acceptance](monitor-compose.md).
 
 SQLite retains initialized sources and seen keys across restart; the memory
 store loses them and establishes a new silent baseline. Retry requires the same

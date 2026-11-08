@@ -1,0 +1,11 @@
+version: 1
+id: empty
+name: 'empty & Co'
+type: html
+interval_seconds: 1
+config:
+  url: http://fixture:8080/empty
+  selectors:
+    item: article
+    title: h2
+    url: a

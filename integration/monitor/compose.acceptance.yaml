@@ -1,0 +1,62 @@
+# Test-only wiring: the production image/entrypoint/binary remain unchanged.
+x-offline-env: &offline-env
+  HTTP_PROXY: ""
+  HTTPS_PROXY: ""
+  ALL_PROXY: ""
+  http_proxy: ""
+  https_proxy: ""
+  all_proxy: ""
+  NO_PROXY: "*"
+  no_proxy: "*"
+services:
+  monitor:
+    restart: "no"
+    environment:
+      <<: *offline-env
+      SIGNALWATCH_TELEGRAM_BOT_TOKEN: "123456:acceptance-token"
+      SIGNALWATCH_TELEGRAM_CHAT_ID: "-100123456"
+      SSL_CERT_FILE: /acceptance-ca/ca.pem
+    volumes:
+      - type: bind
+        source: ./integration/monitor/sources
+        target: /sources
+        read_only: true
+      - acceptance-ca:/acceptance-ca:ro
+    depends_on:
+      fixture:
+        condition: service_healthy
+  fixture:
+    image: ${SIGNALWATCH_FIXTURE_IMAGE:-signalwatch-monitor-fixture:local}
+    build:
+      context: .
+      dockerfile: integration/monitor/Dockerfile
+    init: true
+    read_only: true
+    environment: *offline-env
+    volumes:
+      - acceptance-ca:/ca
+    networks:
+      default:
+        aliases: [api.telegram.org]
+    healthcheck:
+      test: [CMD, /fixture, ready]
+      interval: 1s
+      timeout: 2s
+      retries: 20
+  inspect:
+    image: ${SIGNALWATCH_FIXTURE_IMAGE:-signalwatch-monitor-fixture:local}
+    profiles: [inspect]
+    network_mode: none
+    read_only: true
+    volumes:
+      - type: volume
+        source: monitor-state
+        target: /state
+        read_only: true
+        volume:
+          nocopy: true
+networks:
+  default:
+    internal: true
+volumes:
+  acceptance-ca:

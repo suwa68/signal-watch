@@ -9,8 +9,8 @@ The monitor command now runs independent fixed-delay source loops with SQLite
 state retained across restarts. The callable application pipeline creates
 notifications from original item metadata with an empty summary and marks items
 seen only after successful delivery. NLP, richer change detection, and alert
-rules remain future work. Production container packaging and offline monitoring
-acceptance are still pending Phase 2 Task 4.
+rules remain future work. A nonroot Docker Compose monitor retains state in a
+named volume; offline acceptance exercises the unchanged production image.
 
 See the [architecture documentation](doc/architecture.md) for details.
 
@@ -48,6 +48,26 @@ and `status`; error records contain redacted, truncated details. Fatal command
 errors go to stderr, with a 25-millisecond best-effort final flush so blocked
 output cannot prevent process exit. A completed-run event follows the entire
 Pipeline return, including baseline/mark work. Query CLI/MCP remain independent of this state.
+
+## Docker monitor
+
+Supply `SIGNALWATCH_SOURCES_DIR`, `SIGNALWATCH_TELEGRAM_BOT_TOKEN` and
+`SIGNALWATCH_TELEGRAM_CHAT_ID`, then run:
+
+```sh
+docker compose -p signalwatch-monitor -f compose.monitor.yaml up -d --build
+```
+
+The production service uses a read-only root filesystem/source mount, a nonroot
+owned state volume, automatic restart and a 15-second stop grace. Keep the same
+project/volume across upgrades; deleting the volume resets monitoring state.
+See [monitor Compose operations and offline acceptance](doc/monitor-compose.md)
+for setup, lifecycle, failure assumptions and evidence limits. The deterministic
+credential-free production-image check needs no host Go:
+
+```sh
+integration/monitor/acceptance.sh
+```
 
 ## Query v1
 
