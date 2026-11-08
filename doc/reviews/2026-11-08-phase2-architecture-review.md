@@ -192,8 +192,35 @@ acceptance condition remain unverified. No Phase 2 implementation is authorized.
 
 ## Human approval boundary
 
+This paragraph records the review-era boundary; subsequent implementation
+authorization is recorded in the execution checkpoint below.
+
 The documentation/process changes are requested. Phase 2 implementation still
 requires explicit approval of the reviewed plan, including SQLite/dependency and
 ownership choices, completion-based cadence/timing, restart/delivery limitations,
 and batch-drain fatal detection. A review verdict or merging this documentation
 PR does not satisfy that separate approval gate. Do not auto-merge or deploy.
+
+## Authorized execution checkpoint: state-layer material review
+
+The user authorized Phase 2 implementation on 2026-11-08. Task 1 added SQLite
+state in `42b577a`, then its independent code review reproduced two Important defects:
+normal cancellation could become fatal through ErrTxDone, and native Close could
+precede database/sql's automatic rollback. Existing green suites did not cover
+those windows. Parent resumed the original implementer rather than bypass review.
+
+Fix `202688a` assigns one synchronous transaction-termination owner using a private
+uncanceled lifetime; normal acquisition/SQL still use caller context and commit
+checks cancellation. Actual interrupted INSERT testing also exposed native SQLite
+auto-rollback. A cleanup-only SAVEPOINT followed by full Rollback makes both native
+states safe without data writes, RELEASE/COMMIT or error-string suppression.
+Cleanup errors remain fatal with retained causes.
+
+Independent scoped re-review accepted both findings and the material lifetime/
+SAVEPOINT choice, with no new fix-diff findings. Actual focused, state race, full
+suite and Darwin state execution passed; Linux amd64/arm64 compiled. See the
+[implementation handoff](../handoffs/phase2-monitoring-mvp.md) and committed
+[lifecycle regressions](../../internal/state/sqlite_lifecycle_test.go). The known
+pre-commit cancellation race window and lock-wait versus filesystem-I/O bound
+remain disclosed. This closes the state-layer AR-4 implementation concerns, not
+the future scheduler/daemon/production-image acceptance requirements.
