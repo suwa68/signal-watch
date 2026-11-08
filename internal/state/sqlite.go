@@ -194,7 +194,16 @@ func (s *SQLiteStateStore) beginWrite(ctx context.Context) (*sql.Conn, *sql.Tx, 
 	if err != nil {
 		return nil, nil, classifySQLite(ctx, err)
 	}
-	tx, err := conn.BeginTx(ctx, nil)
+	if err := ctx.Err(); err != nil {
+		conn.Close()
+		return nil, nil, err
+	}
+	// Only finishWrite owns transaction termination. A caller-canceled BeginTx
+	// context would let database/sql's asynchronous rollback race with discard;
+	// ErrTxDone does not mean that native rollback has finished. Acquisition and
+	// all normal SQL still use ctx, and finishWrite checks it before commit.
+	// BEGIN/COMMIT themselves use the driver's bounded busy timeout.
+	tx, err := conn.BeginTx(context.WithoutCancel(ctx), nil)
 	if err != nil {
 		cleanup := discardConnection(conn)
 		conn.Close()
@@ -208,21 +217,30 @@ func (s *SQLiteStateStore) beginWrite(ctx context.Context) (*sql.Conn, *sql.Tx, 
 
 func finishWrite(ctx context.Context, conn *sql.Conn, tx *sql.Tx, operationErr error) error {
 	defer conn.Close()
+	// Never begin a commit after observing caller cancellation, including when
+	// its final statement succeeded. Preserve independent backend failures.
+	operationErr = errors.Join(operationErr, ctx.Err())
 	var cleanup error
 	if operationErr == nil {
 		operationErr = tx.Commit()
 	} else {
-		cleanup = tx.Rollback()
-		if errors.Is(cleanup, sql.ErrTxDone) {
-			cleanup = nil
-		}
+		// SQLite itself can roll back an interrupted write while sql.Tx remains
+		// live. A SAVEPOINT nests in an active transaction or starts an empty
+		// deferred transaction, so plain ROLLBACK is valid in either state. This
+		// is cleanup control only: no data writes, RELEASE, or COMMIT. Every
+		// cleanup error is retained, and rollback/discard still run on failure.
+		_, cleanup = tx.ExecContext(context.WithoutCancel(ctx), "SAVEPOINT signalwatch_cleanup")
+		cleanup = errors.Join(cleanup, tx.Rollback())
 	}
 	if operationErr == nil {
 		return nil
 	}
 	// modernc v1.59 rolls back a failed COMMIT but hides rollback errors. Keep the
 	// sql.Conn pinned until a synchronous driver Close has discarded any remaining
-	// native transaction. Raw is used only for exclusive cleanup, never for SQL.
+	// native transaction. Commit/Rollback above completes synchronously: the
+	// private transaction context prevents a competing automatic rollback. Raw
+	// alone would only serialize individual calls, not complete the transaction.
+	// Raw is used only for exclusive cleanup, never for SQL.
 	cleanup = errors.Join(cleanup, discardConnection(conn))
 	if cleanup != nil {
 		return errors.Join(ErrFatal, operationErr, cleanup, ctx.Err())
