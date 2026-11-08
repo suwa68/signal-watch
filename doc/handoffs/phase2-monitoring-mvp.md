@@ -43,7 +43,7 @@ aggregation, NLP, brokers/distributed workers, merge or deployment.
 | Execution checkpoint | Committed | c13bfab; user approval and concrete task interfaces recorded |
 | 1 — durable state | Complete; independently approved after fix round 1 | Original42b577a + fix202688a; final focused/state race/full/Darwin execution and Linux amd64/arm64 builds pass |
 | 2 — scheduler | Complete; independently approved | 206c71b + tracking-only9c7e14a; runtime/race/Pipeline/full checks passed; no review findings |
-| 3 — daemon | Implemented; Parent independent review pending | Fresh-context executor continued from2840fe5; command, lifecycle, real SQLite/query and helper crash evidence below |
+| 3 — daemon | Complete; independently approved after fix round 1 | Fresh executor from2840fe5; initial12bf8d0 + fatal-boundary fixb7515ca; actual command/race/vet and helper evidence below |
 | 4 — Compose/acceptance | Not started | Read-only fixture feasibility investigation can overlap earlier tasks |
 
 The Parent's plan-local progress ledger/briefs/reports are under
@@ -256,4 +256,7 @@ the original signal0/fatal+signal/cleanup precedence, blocked final diagnostic,
 actual10-second subprocess timeout, HTTP cancellation, SQLite/query integration
 and post-send helper crash coverage. The prior full-suite evidence above applies
 to12bf8d0; no new full-suite claim is made for this scoped command-only fix.
-Parent scoped independent re-review is pending; Task 4 remains unimplemented.
+Parent scoped independent re-review accepted I1 as addressed, with no new
+findings. It verified command cancellation before reporting/join, retained fatal
+causes and no active-store Close on timeout; no test reruns were needed. Task 4
+is the next incomplete task and remains unimplemented at this checkpoint.

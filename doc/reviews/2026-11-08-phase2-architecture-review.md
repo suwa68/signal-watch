@@ -224,3 +224,31 @@ suite and Darwin state execution passed; Linux amd64/arm64 compiled. See the
 pre-commit cancellation race window and lock-wait versus filesystem-I/O bound
 remain disclosed. This closes the state-layer AR-4 implementation concerns, not
 the future scheduler/daemon/production-image acceptance requirements.
+
+## Authorized execution checkpoint: scheduler and daemon
+
+Scheduler206c71b (net task head9c7e14a) passed independent spec/quality review
+without findings. Channel barriers and a real Pipeline C/D regression verify
+independent fixed delays, fatal-before-cancellation aggregate precedence and
+all-worker joining; package/race/Pipeline/full-suite evidence passed.
+
+A fresh-context executor continued from tracked checkpoint2840fe5, inferred
+Task 3 without consequential missing context, and implemented daemon12bf8d0.
+This is actual fresh-context execution, not genuine new-session evidence. Its
+self-review reproduced blocked-output diagnostics defeating shutdown and fixed
+that before independent review, retaining a25ms best-effort final flush.
+
+Independent daemon review then found Important I1: scheduler cancellation alone
+did not activate command grace, so a fatal completion followed by blocked
+reporting/noncooperative sibling could hang without a signal. Fixb7515ca adds a
+command-owned Runner that cancels the command with the original fatal cause after
+Pipeline return and before scheduler reporting/join. Accepted store/scheduler and
+the reporter's reporting-only role are unchanged.
+
+Real Pipeline/runtime/localHTTP/fatal-store seam regressions failed without an
+OS signal, then passed for blocked completion output, noncooperative sibling and
+cooperative cause retention. Final affected command tests/race/vet passed.
+Scoped independent re-review accepted I1, no new findings. Resources still close
+after workers; timeout leaves active resources to process exit. Ordinary output
+may backpressure workers; final diagnostics may be lost. Production-image/TLS/
+volume acceptance and final current-head CI remain Task 4 obligations.
