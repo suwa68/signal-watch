@@ -53,7 +53,7 @@
 
 **Interfaces:** define Runner with RunOnce(context.Context, config.SourceConfig) error; ScheduledSource {Config config.SourceConfig; Runner Runner}; Run(ctx context.Context, sources []ScheduledSource, report func(config.SourceConfig,error)) error. report observes every completed run including nil errors. Use a private injectable wait/timer seam; production API has no tuning/test flags.
 
-- [ ] Write failing fake-clock/channel-barrier tests for immediate start, distinct source intervals, completion-based delay, no same-source overlap/backlog, slow A while B progresses, regular collection after recoverable error, overflow/duplicate/empty/nil-runner validation.
+- [ ] Write failing fake-clock/channel-barrier tests for immediate start, distinct source intervals, completion-based delay, no same-source overlap/backlog, slow A while B progresses, regular collection after recoverable error, overflow/duplicate/empty-source-list/blank-ID/nil-runner validation. A nil report is allowed; nonnil callbacks are concurrent per worker and must return promptly.
 - [ ] Write failing supervisor tests for sender-local cancellation while actual caller remains active; ErrUnavailable; ErrFatal wrapped/joined with sender timeout and caller cancellation; fatal result after a sibling reports cancellation; original causes retained; canceled timers/loops all joined before return.
 - [ ] Run focused tests to observe RED, then implement one loop per source and a derived shared cancel context. Validate time.Duration conversion before goroutines; use real timers in production and fake waits in tests. No StateStore/notifier/OS signal ownership in scheduler.
 - [ ] Fatal-first result handling: cancel siblings, gather worker outcomes, return fatal aggregate even if external context was also canceled. Pure governing cancellation returns that context error for command exit mapping; recoverable errors are reported and next regular collection proceeds. Report callbacks must not own worker shutdown or perform external side effects.
@@ -63,9 +63,16 @@
 
 ## Task 3: Runnable monitor command and shutdown integration
 
-**Files:** create cmd/signalwatch/main.go, focused assembly/lifecycle files and tests; create/update doc/handoffs/phase2-monitoring-mvp.md; update affected runtime status documentation. Keep existing Query CLI/MCP and Pipeline APIs intact.
+**Files:** create cmd/signalwatch/main.go, focused assembly/lifecycle files and tests; minimally modify internal/query/assembly.go for shared catalog/runner composition; create/update doc/handoffs/phase2-monitoring-mvp.md; update affected runtime status documentation. Keep existing Query CLI/MCP and Pipeline APIs intact.
 
 **Interfaces:** command parses --sources-dir and --state-dir=/state, existing SIGNALWATCH_TELEGRAM_BOT_TOKEN/CHAT_ID env. Compose one shared SourceRunner, state.OpenSQLite, one Telegram notifier and one Pipeline per source, then runtime.Run. Keep a testable unexported run(args, getenv, streams/dependencies) entrypoint and bounded signal lifecycle; SDK types remain in Telegram package. Use a fixed internal destination ID.
+
+Existing query.LoadHTMLCatalog returns a query Service, not the raw Runner needed
+by Pipeline. Add only query.LoadHTMLCatalogAndRunner(ctx context.Context, directory
+string, client *http.Client) (*Catalog, *source.SourceRunner, error) in assembly.go;
+retain LoadHTMLCatalog's existing signature by delegating to the shared helper
+and wrapping NewService. Daemon uses the new helper; no copied validation/registry
+block, DTO-as-collector, package move, generic config subsystem or query state access.
 
 - [ ] Start only from tracked checkpoint, instructions and code; record missing handoff context/questions before adding behavior. Write failing command tests for flags/env/catalog, empty/duplicate/invalid settings/interval overflow, and startup order: validate config, acquire state, then notifier; no scheduling after startup cancellation.
 - [ ] Write failing lifecycle tests for signal cancellation, timer/request shutdown, pure signal exit 0, fatal+signal and cleanup errors nonzero, closing store only after workers finish, and 10-second noncooperative timeout exit. Use subprocess/helper barriers; keep production grace fixed, private test clocks may shorten test latency.

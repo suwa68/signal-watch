@@ -42,8 +42,8 @@ aggregation, NLP, brokers/distributed workers, merge or deployment.
 | --- | --- | --- |
 | Execution checkpoint | Committed | c13bfab; user approval and concrete task interfaces recorded |
 | 1 — durable state | Complete; independently approved after fix round 1 | Original42b577a + fix202688a; final focused/state race/full/Darwin execution and Linux amd64/arm64 builds pass |
-| 2 — scheduler | Not started | Must follow Task 1 independent review |
-| 3 — daemon | Not started | Fresh-context execution rehearsal after Tasks 1/2 reviewed |
+| 2 — scheduler | Complete; independently approved | 206c71b + tracking-only9c7e14a; runtime/race/Pipeline/full checks passed; no review findings |
+| 3 — daemon | Next task | Fresh-context execution rehearsal starts from this reviewed integration boundary |
 | 4 — Compose/acceptance | Not started | Read-only fixture feasibility investigation can overlap earlier tasks |
 
 The Parent's plan-local progress ledger/briefs/reports are under
@@ -62,46 +62,31 @@ implementation and read-only feasibility work continued. This is evidence of
 non-blocking work overlap, not final-head validation. Every push invalidates
 previous-head check evidence. Never use Parent watch commands.
 
-Task 1 produces `state.OpenSQLite(ctx, directory) (*SQLiteStateStore,error)`,
-`(*SQLiteStateStore).Close() error`, and `state.ErrUnavailable`/`state.ErrFatal`.
-It preserves all four StateStore methods, including marks before initialization.
-Private files are `state.db` and `.signalwatch.lock`; never unlink the lock file.
-Driver pin: modernc.org/sqlite v1.59.0 (Go1.25), with direct x/sys and driver-required
-indirect modules. A private pinned sql.Conn per transaction is discarded after
-failure; normal SQL stays on Tx. Independent review found that database/sql's
-automatic rollback can race native discard and that sql.ErrTxDone can wrongly
-make normal cancellation fatal. Fix202688a uses a private uncanceled transaction
-lifetime with original caller context for acquisition/normal SQL and pre-commit
-cancellation check. A cleanup-only SAVEPOINT before full Rollback handles native
-SQLite auto-rollback after interrupted INSERT; no user-data write or commit begins
-after observed cancellation. All cleanup faults remain fatal with causes. These
-load-bearing corrections were independently accepted in scoped re-review, with
-both Important findings addressed and no new fix-diff findings. Cancellation
-after the pre-commit observation can race an already-running synchronous Commit;
-the busy timeout bounds lock waiting, not all filesystem I/O. Do not broaden the
-state-layer evidence into a whole-daemon shutdown guarantee.
+Task 1 evidence includes actual-driver COMMIT-BUSY/reopen, concurrent baselines/
+marks, failed insert rollback, separate-process ownership/alias/death release and
+killing an actual uncommitted baseline. Two cancellation cleanup defects found by
+independent review were fixed and independently accepted in202688a; details and
+limitations are in the [review record](../reviews/2026-11-08-phase2-architecture-review.md).
+These are state/helper-tier results, not daemon/production-image acceptance.
 
-Implementation test report includes actual COMMIT-BUSY + safe reuse/reopen,
-concurrent baselines/marks, trigger-induced rollback, separate-process alias/owner
-refusal/death release, and killing a real baseline transaction through a test-only
-SQLite scalar function/TEMP trigger (no product callback). State race passed;
-uncached full repository suite passed. These are Task 1 evidence, not daemon or
-production-image acceptance. Verify the independent review disposition before
-continuing. Full task logs/report remain in plan-local scratch until results are
-captured at the reviewed integration boundary. Final Task 1 commands were:
+Final Task 1 commands:
 
 ```sh
 docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go test -race ./internal/state -count=1 -timeout=90s -v
 docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go test ./... -count=1 -timeout=120s
 ```
 
-They passed (state race5.430s; full suite state1.215s). Final focused lifecycle/
-COMMIT-BUSY tests passed1.106s. Linux amd64/arm64 + Darwin arm64 test binaries
-compiled; Darwin arm64 binary actually executed with all state tests passing.
-Tests now committed in sqlite_lifecycle_test.go cover cancellation before/after
-statements and during an actual interrupted INSERT, rollback-before-close,
-independent fatal causes and cleanup-control failure. Existing actual-driver
-COMMIT-BUSY and process ownership/crash tests remain passing.
+They passed (state race5.430s/full state1.215s; focused lifecycle/BUSY1.106s).
+Linux amd64/arm64 + Darwin arm64 compiled; Darwin arm64 actually executed all state
+tests successfully. Linux amd64 has build evidence, not native execution evidence.
+
+Task 2 commands used the same Compose prefix: `go test ./internal/runtime -count=1`
+(0.003s); `go test -race ./internal/runtime -count=20` after strengthened validation
+tests (1.034s); `go test ./internal/application ./internal/monitoring -count=1`
+(0.007s/0.005s); `go test ./... -count=1` (runtime0.002s/state1.159s). All passed.
+Independent review checked code and logs, found no task findings and did not rerun
+suites. It confirmed fatal-first aggregates, all-worker join, real Pipeline's
+delayed fatal C/D regression, independent fixed delays and timer cleanup.
 
 No daemon/Compose MVP acceptance is claimed at this checkpoint. Distinguish
 ordinary suite skips, helper crash windows and unchanged production-image evidence.
@@ -112,11 +97,39 @@ do not rerun it in a sandbox permission-failure loop.
 
 ## Next steps
 
+The next executor implements Task 3 only from this tracked handoff, the execution
+plan/Task 3 brief, AGENTS.md and actual code. This is a fresh-context rehearsal;
+do not claim genuine new-session execution. Record gaps before relying on Parent
+conversation memory. Start with `git status --short --branch` and
+`git log -6 --oneline`; skip completed Tasks 1/2. Parent commits this handoff before
+dispatch; the commit containing this checkpoint is the Task 3 BASE.
+
+Storage APIs: `state.OpenSQLite(ctx,directory) (*SQLiteStateStore,error)`, concrete
+`Close() error`, and `state.ErrUnavailable`/`state.ErrFatal`. Keep the four methods
+unchanged, pre-init marks allowed, files `state.db`/`.signalwatch.lock`, driver
+modernc.org/sqlite v1.59.0. Do not alter accepted store lifetimes for assembly.
+
+Task 2's fixed integration API is `runtime.Run(ctx, []ScheduledSource, report)
+error`, with `ScheduledSource{Config config.SourceConfig; Runner Runner}` and
+`Runner.RunOnce(context.Context, config.SourceConfig) error`. The report function
+receives config and completed run error (including nil), is optional, concurrent
+across source workers and must return promptly. Zero source list/blank IDs,
+duplicates, nil runners and duration overflow are rejected before goroutines.
+It owns source-loop coordination only, not signals, storage or notifier lifetimes.
+
+For Task 3, existing `query.LoadHTMLCatalog` returns a Query Service, not a raw
+Pipeline Collector. The execution plan specifies one small shared composition
+helper `query.LoadHTMLCatalogAndRunner(ctx,directory,client)` returning catalog and
+SourceRunner, with the old loader retained as wrapper. Preserve Query entrypoints,
+validation and state isolation; do not copy the registry/validation block or pass
+query DTOs through monitoring.
+
 Parent accepts only a committed task plus actual test evidence and independent
 spec/quality review; no parallel implementation agents under the selected SDD skill.
-Continue the first incomplete task from the execution plan/ledger and existing
-commits; never recreate completed work. Refresh this handoff after reviewed Tasks
-1/2 with actual APIs/commits/tests and exact Task 3 entrypoint before handing it to
-a fresh-context executor. Report a rehearsal separately from genuine new-session
-execution. Final acceptance requires current-head Test and vet plus the new
+Implement cmd/signalwatch's CLI/env validation, one Pipeline per source, shared
+store/notifier, safe structured logs and bounded signal lifecycle. Write failing
+tests first, preserve query APIs through the helper above, use private test seams
+without production fake flags, then run Task 3 checks/commit/report for review.
+Task 4's production image/TLS fixtures/Compose and Monitoring acceptance job remain
+unimplemented. Final acceptance requires current-head Test and vet plus the new
 Monitoring acceptance job and a broad independent review; do not merge or deploy.
