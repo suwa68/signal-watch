@@ -28,10 +28,12 @@ Notification Routing
 Delivery Adapters
 ```
 
-The source-definition/runtime portions, process-local baseline/deduplication,
-and outbound Telegram destination are connected by a callable application
-pipeline. It sends original item metadata without an NLP summary. Rules,
-scheduling, durable state, and destination routing remain future work.
+The source-definition/runtime portions, baseline/deduplication, and outbound
+Telegram destination are connected by a callable application pipeline. The
+monitor command adds fixed-delay scheduling and SQLite state retained across
+restarts. It sends original item metadata without an NLP summary. Rules and
+destination routing remain future work; production monitor packaging and offline
+acceptance are pending Phase 2 Task 4.
 
 ## 2. Architectural Style
 
@@ -395,8 +397,9 @@ marks them after downstream delivery succeeds.
 
 An item without any usable deterministic identity fails that source's current
 processing attempt without terminating the process or partially establishing a
-baseline. This v1 state is intentionally lost on process restart and does not
-define update, deletion, or exactly-once semantics.
+baseline. This v1 memory state is intentionally lost on process restart. The
+monitor's SQLite implementation preserves the same baseline/seen contract across
+restart; neither implementation defines update, deletion, or exactly-once semantics.
 
 ## 14. Application Notification Orchestration v1
 
@@ -452,11 +455,30 @@ collection. Its guard is released on every exit and does not coordinate other
 pipeline instances or processes. A concurrent-safe store by itself cannot
 prevent duplicate sends.
 
-The application reuses its pipeline, memory store, notifier, and destination
-between caller-driven runs. There is no scheduler or retry loop. Retry requires
-the same item to be collected again; a failed item that disappears from the
-source has no durable pending snapshot. A restart loses state and establishes
-a new silent baseline. An uncertain send outcome or a failed write after a
+The application reuses its pipeline, store, notifier, and destination between
+runs. The callable v1 memory-store path remains available; `cmd/signalwatch`
+composes a shared SQLite store, one native SourceRunner, one Telegram notifier
+and one Pipeline per source. It reuses the validated HTML catalog composition
+through `query.LoadHTMLCatalogAndRunner`; Query's existing loader remains a
+wrapper with no monitoring-state access.
+
+The daemon validates all definitions and interval duration conversions before
+acquiring directory ownership and initializing Telegram. Each source runs
+immediately, then waits its interval after completion, with no overlap or
+catch-up. A 20-second child bounds each send; marks retain the worker context.
+Fatal state results cancel siblings only after the current Pipeline returns,
+then all workers join before storage closes. SIGINT/SIGTERM exit cleanly unless
+fatal/cleanup errors occur or the fixed 10-second grace expires. Startup and
+completed-run JSON logs identify each source; error output redacts the bot token
+and Telegram request URLs and truncates variable fields. Final diagnostics have
+a 25-millisecond best-effort flush budget so blocked output cannot hold exit;
+normal operational output may backpressure workers. Runtime packaging and
+production-image acceptance remain pending Phase 2 Task 4.
+
+SQLite retains initialized sources and seen keys across restart; the memory
+store loses them and establishes a new silent baseline. Retry requires the same
+item to be collected again; a failed item that disappears from the source has
+no durable pending snapshot. An uncertain send outcome or a failed write after a
 successful send can cause duplicates; neither exactly-once nor durable
 at-least-once delivery is promised. State is scoped by source/item, so dynamic
 destination changes and independent fan-out tracking remain outside this slice.
@@ -520,11 +542,11 @@ The following remain intentionally unresolved:
 - canonical URL rules,
 - content-diff hashing and snapshots,
 - change detection beyond seen vs unseen,
-- durable and cross-process baseline behavior,
+- distributed baseline ownership beyond one local SQLite directory,
 - deletion detection,
-- scheduling details,
+- scheduling beyond the implemented per-source fixed delay,
 - retry/backoff,
-- persistence,
+- persistence backends beyond the implemented local SQLite store,
 - NLP enrichment and rule evaluation before notification delivery,
 - destination routing and global notification configuration,
 - durable delivery guarantees,

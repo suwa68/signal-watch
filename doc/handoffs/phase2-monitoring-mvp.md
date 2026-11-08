@@ -43,7 +43,7 @@ aggregation, NLP, brokers/distributed workers, merge or deployment.
 | Execution checkpoint | Committed | c13bfab; user approval and concrete task interfaces recorded |
 | 1 — durable state | Complete; independently approved after fix round 1 | Original42b577a + fix202688a; final focused/state race/full/Darwin execution and Linux amd64/arm64 builds pass |
 | 2 — scheduler | Complete; independently approved | 206c71b + tracking-only9c7e14a; runtime/race/Pipeline/full checks passed; no review findings |
-| 3 — daemon | Next task | Fresh-context execution rehearsal starts from this reviewed integration boundary |
+| 3 — daemon | Implemented; Parent independent review pending | Fresh-context executor continued from2840fe5; command, lifecycle, real SQLite/query and helper crash evidence below |
 | 4 — Compose/acceptance | Not started | Read-only fixture feasibility investigation can overlap earlier tasks |
 
 The Parent's plan-local progress ledger/briefs/reports are under
@@ -133,3 +133,76 @@ without production fake flags, then run Task 3 checks/commit/report for review.
 Task 4's production image/TLS fixtures/Compose and Monitoring acceptance job remain
 unimplemented. Final acceptance requires current-head Test and vet plus the new
 Monitoring acceptance job and a broad independent review; do not merge or deploy.
+
+## Task 3 fresh-context continuation rehearsal (2026-11-08)
+
+A fresh-context executor actually implemented Task 3 from tracked BASE
+`2840fe5230a5fbeb6ac19173abe80adf63715778`, the tracked handoff, execution plan,
+AGENTS.md and code. It reported the next task, invariants and validation before
+coding. No consequential handoff gap or prior-conversation assumption was needed;
+accepted Tasks 1/2 were not reimplemented. This demonstrates a fresh-context
+execution rehearsal, **not** a genuinely new Codex session. Independent Parent
+spec/quality review is still required before Task 3 is accepted.
+
+New composition is `cmd/signalwatch`: only `--sources-dir` and `--state-dir`
+(default `/state`), existing Telegram token/chat environment variables, one
+shared SourceRunner/store/notifier and one Pipeline per source. The one added
+query API is `LoadHTMLCatalogAndRunner(ctx,directory,client)`; existing
+`LoadHTMLCatalog` remains a wrapper with its signature unchanged. Configuration
+and intervals validate before state ownership, then getMe. SDK types remain in
+the Telegram package. Every send has a canceled-on-return 20-second child;
+marks keep the worker context. The accepted store and scheduler were untouched.
+
+Signal supervision covers startup and runtime. Workers join before store close;
+pure signal exits0, mixed fatal/cancellation and cleanup errors exit1. Actual
+subprocesses tested SIGTERM during initialization (private notifier seam),
+in-flight local HTTP requests, timer waits, fatal results, cleanup failures and
+the real fixed10-second noncooperative grace. The SDK's documented five-second
+getMe initialization bound remains unchanged; actual SDK/TLS transport acceptance
+belongs to Task 4.
+
+Operational JSON contains per-source startup and `source_run_completed` events
+only after the entire Pipeline returns. Source IDs/errors are bounded, tokens
+and Telegram request URLs redacted. RED tests exposed help incorrectly continuing
+startup and JSON control-character escaping exceeding the log bound; both were
+corrected. Self-review then found a new implementation defect: a blocked stdout
+writer held the log mutex, and a synchronous timeout diagnostic waited on it,
+defeating shutdown. A barrier regression failed at250ms with a shortened20ms test
+grace, then passed after the final diagnostic received a25ms best-effort flush.
+This was new self-review rework, not missing handoff context. Normal operational
+logging can backpressure workers; final diagnostics may be lost if output is
+blocked. The process still exits after its10-second grace plus at most the25ms
+final flush, without closing an active worker's store. No queue/framework or
+production tuning flag was introduced.
+
+Real SQLite/local HTML/real renderer integration proved silent A/B baseline,
+C delivery, cancellation of the send child without contaminating the mark
+context, retained suppression after reopen and Query collection not consuming
+monitoring state. An actual owned directory prevented notifier initialization.
+A synchronized **helper-tier** subprocess used the real Pipeline and SQLite,
+paused at `MarkItemSeen` entry after the injected sender returned success but
+before SQLite mutation, then was SIGKILLed. Reopen/recollection delivered C
+again while baseline A/B stayed suppressed. This is not production-image
+post-send observation or a real Telegram delivery.
+
+Final validation used Docker Go1.25.14 on Linux/arm64 (host Go unavailable):
+
+```sh
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go test ./cmd/signalwatch ./internal/application ./internal/query ./cmd/source-query ./cmd/signalwatch-mcp -count=1 -timeout=90s
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go test ./... -count=1 -timeout=120s
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T -e CGO_ENABLED=1 -e CC=gcc go go test -race ./cmd/signalwatch ./internal/application ./internal/query -count=1 -timeout=120s
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go vet ./...
+```
+
+All passed. Final full suite: daemon10.269s/state1.193s; final scoped race:
+daemon14.302s/application1.020s/query1.010s; vet emitted no diagnostics. The full
+suite and scoped race were repeated after the blocked-log fix; prior results
+were not reused for the amended code. `git diff --check` passed. No live sources,
+real Telegram sends, secrets, store/scheduler edits, push, merge or deployment.
+
+Next: Parent independently reviews the committed Task 3 diff and actual logs,
+records acceptance or requests fixes, then dispatches Task 4 from the tracked
+execution plan. Production monitor image/Compose/CI acceptance, final all-package
+race/build/platform checks, current-PR-head CI and whole-branch review remain
+pending. Ignored Task 3 reports/logs are supplemental; this section preserves
+the essential continuation, validation and remaining-work evidence in Git.

@@ -11,6 +11,20 @@ import (
 
 // LoadHTMLCatalog assembles the current native adapters and validates a file catalog.
 func LoadHTMLCatalog(ctx context.Context, directory string, client *http.Client) (*Catalog, *Service, error) {
+	catalog, runner, err := LoadHTMLCatalogAndRunner(ctx, directory, client)
+	if err != nil {
+		return nil, nil, err
+	}
+	service, err := NewService(runner)
+	if err != nil {
+		return nil, nil, err
+	}
+	return catalog, service, nil
+}
+
+// LoadHTMLCatalogAndRunner shares validated native HTML composition with monitoring.
+// The runner collects normalized items; it never accesses monitoring state.
+func LoadHTMLCatalogAndRunner(ctx context.Context, directory string, client *http.Client) (*Catalog, *source.SourceRunner, error) {
 	registry := source.NewSourceAdapterRegistry()
 	if err := registry.Register("html", htmlsource.New(client)); err != nil {
 		return nil, nil, err
@@ -29,9 +43,5 @@ func LoadHTMLCatalog(ctx context.Context, directory string, client *http.Client)
 	if err != nil {
 		return nil, nil, err
 	}
-	service, err := NewService(source.NewSourceRunner(registry))
-	if err != nil {
-		return nil, nil, err
-	}
-	return catalog, service, nil
+	return catalog, source.NewSourceRunner(registry), nil
 }
