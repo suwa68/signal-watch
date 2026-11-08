@@ -206,3 +206,54 @@ execution plan. Production monitor image/Compose/CI acceptance, final all-packag
 race/build/platform checks, current-PR-head CI and whole-branch review remain
 pending. Ignored Task 3 reports/logs are supplemental; this section preserves
 the essential continuation, validation and remaining-work evidence in Git.
+
+## Task 3 independent review fix round 1 — fatal shutdown boundary
+
+Independent review of `2840fe5..12bf8d0` found Important I1: the command grace
+observed only OS-signal cancellation. The scheduler's fatal path canceled its
+private worker context, then could block in completion logging or joining a
+noncooperative sibling; without an OS signal the command never started its
+grace. This is implementation review rework, not missing prior-conversation
+input. The fresh-context execution remains a rehearsal, not genuine new-session
+evidence.
+
+The command now derives a context with cancellation cause from its signal
+context. A small command-owned Runner wrapper observes each completed Pipeline
+result and cancels that governing context on wrapped/joined `state.ErrFatal`,
+**before** scheduler reporting or joining can block. The wrapper returns the
+original error unchanged; cooperative scheduler return retains all fatal causes
+and exits1. Timeout diagnostics join an available fatal cancellation cause with
+the grace error. Pure signal still exits0 and cleanup errors still exit1. The
+report callback remains reporting-only, and accepted store/scheduler internals
+are unchanged. Store close still occurs only after scheduler workers finish;
+timeout does not close an active store. The10-second production grace and25ms
+best-effort final flush are unchanged; backpressure/diagnostic-loss limits remain.
+
+RED used real Pipeline + runtime.Run, local HTTP, and a test-only fatal baseline
+store seam with **no OS signal**. Both a blocked completion log and a sibling
+blocked in its store call failed to exit at250ms using a20ms private test grace;
+a cooperative fatal test also proved governing cancellation/cause was absent.
+After correction both blocked cases exited1 before release while store Close
+remained uncalled; releasing barriers then allowed normal worker join/Close.
+Cooperative completion retained the original sentinel plus ErrFatal in the
+command cancellation cause and final error. Focused RED command:
+
+```sh
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go sh -c 'gofmt -w cmd/signalwatch/main_test.go && go test ./cmd/signalwatch -run "TestFatalCompletionWithoutSignal|TestCooperativeFatalCompletion" -count=1 -timeout=15s -v'
+```
+
+Exit1 before fix (daemon0.512s), then the same selected tests passed after
+formatting main.go/assembly.go (daemon0.073s). Final affected checks:
+
+```sh
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go test ./cmd/signalwatch -count=1 -timeout=90s -v
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T -e CGO_ENABLED=1 -e CC=gcc go go test -race ./cmd/signalwatch -count=1 -timeout=120s
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go vet ./cmd/signalwatch
+```
+
+All exited0: focused10.194s, race14.381s, vet no diagnostics. These runs include
+the original signal0/fatal+signal/cleanup precedence, blocked final diagnostic,
+actual10-second subprocess timeout, HTTP cancellation, SQLite/query integration
+and post-send helper crash coverage. The prior full-suite evidence above applies
+to12bf8d0; no new full-suite claim is made for this scoped command-only fix.
+Parent scoped independent re-review is pending; Task 4 remains unimplemented.

@@ -16,6 +16,7 @@ import (
 	"github.com/suwa68/signal-watch/internal/notification/telegram"
 	"github.com/suwa68/signal-watch/internal/query"
 	monitor "github.com/suwa68/signal-watch/internal/runtime"
+	"github.com/suwa68/signal-watch/internal/state"
 )
 
 type options struct {
@@ -56,7 +57,7 @@ func parseOptions(args []string, getenv func(string) string, stderr io.Writer) (
 	}
 	return o, 0
 }
-func execute(ctx context.Context, o options, d dependencies, logs *operationalLog) (result outcome) {
+func execute(ctx context.Context, o options, d dependencies, logs *operationalLog, cancel context.CancelCauseFunc) (result outcome) {
 	catalog, collector, err := query.LoadHTMLCatalogAndRunner(ctx, o.sourcesDir, nil)
 	if err != nil {
 		return canceledOrError(ctx, 2, fmt.Errorf("load source catalog: %w", err))
@@ -107,7 +108,7 @@ func execute(ctx context.Context, o options, d dependencies, logs *operationalLo
 		if err != nil {
 			return outcome{1, err}
 		}
-		scheduled = append(scheduled, monitor.ScheduledSource{Config: definition.Config, Runner: pipeline})
+		scheduled = append(scheduled, monitor.ScheduledSource{Config: definition.Config, Runner: fatalShutdownRunner{pipeline, cancel}})
 	}
 	if ctx.Err() != nil {
 		return outcome{0, nil}
@@ -118,6 +119,23 @@ func execute(ctx context.Context, o options, d dependencies, logs *operationalLo
 	err = d.schedule(ctx, scheduled, func(cfg config.SourceConfig, err error) { logs.event("source_run_completed", cfg.ID, err) })
 	return canceledOrError(ctx, 1, err)
 }
+
+// fatalShutdownRunner connects completed Pipeline failures to the command's
+// bounded supervisor before the scheduler can block in reporting or worker join.
+// Keeping this outside report preserves the scheduler's reporting-only contract.
+type fatalShutdownRunner struct {
+	runner monitor.Runner
+	cancel context.CancelCauseFunc
+}
+
+func (r fatalShutdownRunner) RunOnce(ctx context.Context, cfg config.SourceConfig) error {
+	err := r.runner.RunOnce(ctx, cfg)
+	if errors.Is(err, state.ErrFatal) {
+		r.cancel(err)
+	}
+	return err
+}
+
 func canceledOrError(ctx context.Context, code int, err error) outcome {
 	if err == nil || (ctx.Err() != nil && onlyCanceled(err)) {
 		return outcome{0, nil}

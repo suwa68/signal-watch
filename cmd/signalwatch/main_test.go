@@ -313,3 +313,120 @@ func TestBlockedOperationalLogCannotPreventShutdownTimeout(t *testing.T) {
 	}
 	<-closed
 }
+
+type blockedCompletionWriter struct{ entered, release chan struct{} }
+
+func (w blockedCompletionWriter) Write(p []byte) (int, error) {
+	if bytes.Contains(p, []byte(`"event":"source_run_completed"`)) {
+		close(w.entered)
+		<-w.release
+	}
+	return len(p), nil
+}
+
+// A local infrastructure seam induces real Pipeline fatal completion, retaining
+// the real scheduler and command composition in these lifecycle regressions.
+type fatalBaselineStore struct {
+	state.StateStore
+	cause       error
+	beforeFatal func()
+	sibling     func()
+}
+
+func (s fatalBaselineStore) EstablishBaseline(ctx context.Context, id string, keys []string) (bool, error) {
+	if id == "news" {
+		if s.beforeFatal != nil {
+			s.beforeFatal()
+		}
+		return false, s.cause
+	}
+	if s.sibling != nil {
+		s.sibling()
+		return false, ctx.Err()
+	}
+	return s.StateStore.EstablishBaseline(ctx, id, keys)
+}
+
+func TestFatalCompletionWithoutSignalHasBoundedShutdown(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, articles("A")) }))
+	defer server.Close()
+	for _, mode := range []string{"blocked completion log", "noncooperative sibling"} {
+		t.Run(mode, func(t *testing.T) {
+			d := testDependencies(context.Background())
+			d.shutdownGrace = 20 * time.Millisecond
+			entered := make(chan struct{})
+			release := make(chan struct{})
+			closed := make(chan struct{})
+			store := fatalBaselineStore{StateStore: state.NewMemoryStateStore(), cause: fmt.Errorf("failed mark: %w", state.ErrFatal)}
+			var stdout io.Writer = io.Discard
+			if mode == "blocked completion log" {
+				stdout = blockedCompletionWriter{entered, release}
+			} else {
+				store.beforeFatal = func() { <-entered }
+				store.sibling = func() { close(entered); <-release }
+			}
+			d.openStore = func(context.Context, string) (ownedStore, error) {
+				return &testStore{store, func() error { close(closed); return nil }}, nil
+			}
+			dir := definitions(t, "news", "1", server.URL)
+			if mode == "noncooperative sibling" {
+				writeDefinition(t, dir, "two.yaml", "sibling", "1", server.URL)
+			}
+			result := make(chan int, 1)
+			go func() { result <- run([]string{"--sources-dir", dir}, env, stdout, io.Discard, d) }()
+			<-entered
+			select {
+			case code := <-result:
+				if code != 1 {
+					t.Errorf("fatal exit %d", code)
+				}
+				select {
+				case <-closed:
+					t.Error("store closed while scheduler still active")
+				default:
+				}
+				close(release)
+			case <-time.After(250 * time.Millisecond):
+				close(release)
+				<-result
+				<-closed
+				t.Fatal("fatal completion without signal never started shutdown grace")
+			}
+			<-closed
+		})
+	}
+}
+
+func TestCooperativeFatalCompletionCancelsCommandAndRetainsCause(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, articles("A")) }))
+	defer server.Close()
+	d := testDependencies(context.Background())
+	cause := errors.New("sentinel mark failure")
+	finished := false
+	closed := false
+	var governing context.Context
+	store := fatalBaselineStore{StateStore: state.NewMemoryStateStore(), cause: errors.Join(state.ErrFatal, cause), beforeFatal: func() { finished = true }}
+	d.openStore = func(ctx context.Context, _ string) (ownedStore, error) {
+		governing = ctx
+		return &testStore{store, func() error {
+			if !finished {
+				t.Error("closed before worker finished")
+			}
+			closed = true
+			return nil
+		}}, nil
+	}
+	var stderr bytes.Buffer
+	if got := run([]string{"--sources-dir", definitions(t, "news", "1", server.URL)}, env, io.Discard, &stderr, d); got != 1 {
+		t.Fatalf("fatal exit %d", got)
+	}
+	if governing.Err() == nil {
+		t.Error("fatal completion did not cancel governing command context")
+	}
+	if !errors.Is(context.Cause(governing), state.ErrFatal) || !errors.Is(context.Cause(governing), cause) {
+		t.Errorf("governing cancellation cause lost: %v", context.Cause(governing))
+	}
+	if !closed || !strings.Contains(stderr.String(), "sentinel mark failure") {
+		t.Fatalf("close/cause lost: closed=%v stderr=%s", closed, &stderr)
+	}
+}

@@ -4,6 +4,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"os/signal"
@@ -60,8 +61,8 @@ func (d dependencies) defaults() dependencies {
 func main() { os.Exit(run(os.Args[1:], os.Getenv, os.Stdout, os.Stderr, dependencies{})) }
 
 // run supervises startup as well as workers: a signal during bounded SDK getMe
-// starts the same shutdown deadline. On timeout main exits without closing a
-// store that a noncooperative worker might still use.
+// starts the same shutdown deadline as fatal Pipeline completion. On timeout
+// main exits without closing a store that a noncooperative worker might still use.
 func run(args []string, getenv func(string) string, stdout, stderr io.Writer, d dependencies) int {
 	logs := newOperationalLog(stdout, stderr, getenv("SIGNALWATCH_TELEGRAM_BOT_TOKEN"))
 	var diagnostics bytes.Buffer
@@ -73,10 +74,12 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer, d 
 		return code
 	}
 	d = d.defaults()
-	ctx, stop := d.signalContext()
+	signalCtx, stop := d.signalContext()
 	defer stop()
+	ctx, cancel := context.WithCancelCause(signalCtx)
+	defer cancel(nil)
 	result := make(chan outcome, 1)
-	go func() { result <- execute(ctx, options, d, logs) }()
+	go func() { result <- execute(ctx, options, d, logs, cancel) }()
 	select {
 	case done := <-result:
 		return finish(done, logs)
@@ -87,7 +90,11 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer, d 
 		case done := <-result:
 			return finish(done, logs)
 		case <-timer.C:
-			logs.finalFailure("shutdown grace exceeded")
+			err := errors.New("shutdown grace exceeded")
+			if cause := context.Cause(ctx); errors.Is(cause, state.ErrFatal) {
+				err = errors.Join(cause, err)
+			}
+			logs.finalFailure(err.Error())
 			return 1
 		}
 	}
