@@ -44,7 +44,7 @@ aggregation, NLP, brokers/distributed workers, merge or deployment.
 | 1 — durable state | Complete; independently approved after fix round 1 | Original42b577a + fix202688a; final focused/state race/full/Darwin execution and Linux amd64/arm64 builds pass |
 | 2 — scheduler | Complete; independently approved | 206c71b + tracking-only9c7e14a; runtime/race/Pipeline/full checks passed; no review findings |
 | 3 — daemon | Complete; independently approved after fix round 1 | Fresh executor from2840fe5; initial12bf8d0 + fatal-boundary fixb7515ca; actual command/race/vet and helper evidence below |
-| 4 — Compose/acceptance | Implemented; independent review fix round 1 validated, awaiting re-review | Scratch production image, offline SDK/TLS Compose acceptance, full/race/vet/platform checks passed; evidence below |
+| 4 — Compose/acceptance | Complete; independently approved after fix round 1 | Original6bce42f + fix8a2fce4; actual corrected offline SDK/TLS acceptance, full tests and affected race/vet pass; platform evidence below |
 
 The Parent's plan-local progress ledger/briefs/reports are under
 `.superpowers/sdd/2026-11-08-phase2-execution/`. That directory is ignored scratch;
@@ -88,7 +88,8 @@ Independent review checked code and logs, found no task findings and did not rer
 suites. It confirmed fatal-first aggregates, all-worker join, real Pipeline's
 delayed fatal C/D regression, independent fixed delays and timer cleanup.
 
-No daemon/Compose MVP acceptance is claimed at this checkpoint. Distinguish
+At that earlier state/scheduler checkpoint no daemon/Compose acceptance had run;
+the later Task 3/4 sections record subsequent execution. Distinguish
 ordinary suite skips, helper crash windows and unchanged production-image evidence.
 Local host has no Go; Docker provides Go/GCC. Native worktree shell writes/git/Docker
 may require normal scoped escalation. Do not alter socket modes or mount Docker
@@ -97,7 +98,7 @@ do not rerun it in a sandbox permission-failure loop.
 
 ## Next steps
 
-Parent independently reviews the Task 4 commit, then the complete branch against
+Task 4 fix8a2fce4 independently passed scoped re-review. Parent now reviews the complete branch against
 the approved spec, resolving material findings before final handoff. Push/PR/CI
 coordination belongs to Parent. Verify current-head `Test and vet` and
 `Monitoring acceptance` asynchronously; every push invalidates earlier-head
@@ -387,4 +388,8 @@ logs are `task-4-logs/review-i1-*`, `review-i2-*`, and `review-fix1-*` under the
 plan-local scratch directory. Runtime evidence is under
 `.superpowers/sdd/monitor-acceptance/sw-acceptance-1794204230-48469/`, including
 `monitor-signal.log` with actual caller cancellation and the cleanup transcript.
-Parent independent re-review, whole-branch review and final-head CI remain gates.
+Independent scoped re-review approved I1/I2 with no new findings. Whole-branch
+review and final-head CI remain gates. Run42571122272 for8a2fce4 was observed
+in progress while Parent completed this integration handoff; no watch was used.
+The [four-goal autonomy record](../phase2-autonomy-validation.md) preserves actual
+observations, unverified claims and Parent rulings for a fresh session.

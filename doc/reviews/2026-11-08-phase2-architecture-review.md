@@ -252,3 +252,25 @@ Scoped independent re-review accepted I1, no new findings. Resources still close
 after workers; timeout leaves active resources to process exit. Ordinary output
 may backpressure workers; final diagnostics may be lost. Production-image/TLS/
 volume acceptance and final current-head CI remain Task 4 obligations.
+
+## Authorized execution checkpoint: production-image acceptance
+
+Task 4 added the ordinary monitor image, Compose runtime and offline HTML/Telegram
+TLS fixtures in6bce42f. Actual Linux arm64 full/race/vet and production-image
+acceptance passed; both Actions jobs also passed for that commit. Independent
+review still found two Important false-success paths: seen rows could conceal a
+missing initialized marker, and an old natural timeout could satisfy the later
+signal-cancellation assertion. Neither was a demonstrated production defect.
+
+Fix8a2fce4 compares initialization independently and gives signal shutdown a fresh
+monitor plus event/completion cursors. Actual SQLite and request/log regressions
+failed before correction, then passed. The new assertion requires one current
+request cancellation and one caller-context-canceled completion, rejecting old
+events, deadline expiry and request replacement. Actual corrected Compose
+acceptance and full tests/affected race/vet passed. Independent scoped re-review
+approved both findings with no new breakage. The tracked handoff records exact
+commands, image/platform IDs and evidence limits.
+
+All four task gates are complete. Fresh whole-branch review and final-current-head
+Actions are still pending; task review or older-head success is not substituted
+for either. No deferred Minor or parked task finding remains.
