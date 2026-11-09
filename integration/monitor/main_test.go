@@ -184,3 +184,75 @@ func TestHeldAssertionRejectsReplacementRequest(t *testing.T) {
 		t.Fatal("replaced alpha request incorrectly proves continuous hold")
 	}
 }
+
+func TestShutdownRunRequiresPostBarrierCallerCancellation(t *testing.T) {
+	canceled := `{"event":"source_run_completed","source_id":"alpha","status":"error","error":"fetch: context canceled\ncaller context: context canceled"}` + "\n"
+	deadline := `{"event":"source_run_completed","source_id":"alpha","status":"error","error":"fetch: context deadline exceeded"}` + "\n"
+	for _, tc := range []struct {
+		name, logs string
+		before     int
+		wantError  bool
+	}{
+		{"signal cancels current request", canceled, 0, false},
+		{"pre-signal cancellation only", canceled, 1, true},
+		{"deadline after barrier is not signal", deadline, 0, true},
+		{"timeout then canceled replacement", deadline + canceled, 0, true},
+		{"earlier unrelated timeout excluded by cursor", deadline + canceled, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := shutdownRun(strings.NewReader(tc.logs), "alpha", tc.before)
+			if (err != nil) != tc.wantError {
+				t.Fatalf("shutdown error=%v wantError=%v", err, tc.wantError)
+			}
+		})
+	}
+}
+
+func TestSignalBarrierRejectsOldOrReplacedCancellation(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		old, replaced bool
+		wantStatus    int
+	}{
+		{"cancellation after held barrier", false, false, 200},
+		{"pre-signal cancellation cannot satisfy barrier", true, false, 400},
+		{"replacement request cannot satisfy barrier", false, true, 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture()
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			start := func(after int) (context.CancelFunc, chan struct{}) {
+				requestCtx, stop := context.WithCancel(ctx)
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					f.html(httptest.NewRecorder(), httptest.NewRequest("GET", "/alpha", nil).WithContext(requestCtx))
+				}()
+				if err := f.await(ctx, "held", "alpha", after); err != nil {
+					stop()
+					t.Fatal(err)
+				}
+				return stop, done
+			}
+			stop, done := start(0)
+			cursor := f.cursor()
+			stop()
+			<-done
+			if tc.replaced {
+				stop, done = start(cursor)
+				stop()
+				<-done
+			}
+			if tc.old {
+				cursor = f.cursor()
+			}
+			w := httptest.NewRecorder()
+			body := fmt.Sprintf(`{"op":"assert-canceled","key":"alpha","after":%d}`, cursor)
+			f.control(w, httptest.NewRequest("POST", "/", strings.NewReader(body)))
+			if w.Code != tc.wantStatus {
+				t.Fatalf("status=%d want=%d body=%s", w.Code, tc.wantStatus, w.Body.String())
+			}
+		})
+	}
+}

@@ -171,8 +171,19 @@ if wait "$owner_pid"; then owner_pid=; fail 'second owner started'; fi
 owner_pid=
 ctl "{\"op\":\"assert-getme\",\"count\":$g}"
 dc exec -T fixture /fixture assert-owner < "$logs/second-owner.log"
-stop independent-signal
+stop independent-owner
+
+# Isolate signal cancellation from the preceding owner check and its deadline.
+# Capture both cursors while a fresh alpha request is held. After stopping,
+# reject earlier cancellation, a replacement request, and deadline-exceeded logs.
+start recreate
+n=$(count_runs alpha)
+c=$(cursor)
+ctl "{\"op\":\"assert-held\",\"key\":\"alpha\",\"after\":$c}"
+stop signal
 await_event canceled alpha "$c"
+ctl "{\"op\":\"assert-canceled\",\"key\":\"alpha\",\"after\":$c}"
+dc exec -T fixture /fixture assert-shutdown alpha "$n" < "$logs/monitor-signal.log"
 inspect_state '{"alpha":["A","B","C"],"beta":["A","B","C","D","F"],"empty":["E"]}'
 
 # SIGKILL after known committed state. This is ordinary committed continuity,

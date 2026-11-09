@@ -14,30 +14,43 @@ import (
 	"time"
 )
 
-func completedRuns(r io.Reader, source string) (int, string, error) {
-	s := bufio.NewScanner(r)
-	n := 0
-	status := ""
-	for s.Scan() {
-		line := strings.TrimSpace(s.Text())
+type runLog struct {
+	Event  string `json:"event"`
+	Source string `json:"source_id"`
+	Status string `json:"status"`
+	Error  string `json:"error"`
+}
+
+func completedRunLogs(r io.Reader, source string) ([]runLog, error) {
+	scanner := bufio.NewScanner(r)
+	var runs []runLog
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
-		var e struct {
-			Event  string `json:"event"`
-			Source string `json:"source_id"`
-			Status string `json:"status"`
+		var entry runLog
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, err
 		}
-		if err := json.Unmarshal([]byte(line), &e); err != nil {
-			return 0, "", err
-		}
-		if e.Event == "source_run_completed" && e.Source == source {
-			n++
-			status = e.Status
+		if entry.Event == "source_run_completed" && entry.Source == source {
+			runs = append(runs, entry)
 		}
 	}
-	return n, status, s.Err()
+	return runs, scanner.Err()
 }
+func completedRuns(r io.Reader, source string) (int, string, error) {
+	runs, err := completedRunLogs(r, source)
+	if err != nil {
+		return 0, "", err
+	}
+	status := ""
+	if len(runs) > 0 {
+		status = runs[len(runs)-1].Status
+	}
+	return len(runs), status, nil
+}
+
 func command(args []string) error {
 	if len(args) == 0 {
 		return errors.New("subcommand required")
@@ -89,6 +102,15 @@ func command(args []string) error {
 			return errors.New("completion not yet observed")
 		}
 		return nil
+	case "assert-shutdown":
+		if len(args) != 3 {
+			return errors.New("source and pre-signal completion cursor required")
+		}
+		before, err := strconv.Atoi(args[2])
+		if err != nil {
+			return err
+		}
+		return shutdownRun(os.Stdin, args[1], before)
 	case "assert-exit":
 		if len(args) != 2 {
 			return errors.New("exit code required")
@@ -156,4 +178,22 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+// The fresh held request must produce exactly one post-barrier completion,
+// caused by caller cancellation. A prior timeout/replacement cannot stand in
+// for a signal even if the latest completion happens to say context canceled.
+func shutdownRun(r io.Reader, source string, before int) error {
+	runs, err := completedRunLogs(r, source)
+	if err != nil {
+		return err
+	}
+	if before < 0 || len(runs) != before+1 {
+		return errors.New("expected exactly one post-barrier shutdown completion")
+	}
+	completed := runs[before]
+	if completed.Status != "error" || !strings.Contains(completed.Error, "caller context: context canceled") || strings.Contains(completed.Error, "context deadline exceeded") {
+		return fmt.Errorf("shutdown completion must be caller cancellation, got %s: %s", completed.Status, completed.Error)
+	}
+	return nil
 }

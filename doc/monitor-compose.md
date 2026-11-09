@@ -91,9 +91,14 @@ state after container recreation and ordinary restart, failed C/successful D and
 C recollection, deduplication, and independent source progress during a held request.
 The independence barrier also rejects a timeout/cancellation followed by a
 replacement held request. Assertions include SIGTERM cancellation/exit 0,
-ownership rejection before getMe, and SIGKILL exit 137 followed by committed-state recovery. A profile-gated inspector mounts the
+ownership rejection before getMe, and SIGKILL exit 137 followed by committed-state recovery.
+The signal scenario starts a fresh monitor after the owner test, captures both
+fixture-event and completed-run cursors while alpha is held, then requires one
+post-barrier cancellation with no replacement request. Its corresponding single
+completion must contain caller `context canceled` and must not contain
+`context deadline exceeded`; an earlier timeout cannot satisfy shutdown. A profile-gated inspector mounts the
 same state volume read-only with copy-up disabled, refuses live ownership via a
-nonblocking lock, opens SQLite `mode=ro`, and asserts exact initialized/seen sets.
+nonblocking lock, opens SQLite `mode=ro`, and asserts the initialized-source set independently from the exact seen-key sets.
 It cannot initialize, migrate, repair, or chown the production state directory.
 The harness also proves that live inspection is refused.
 

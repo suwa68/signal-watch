@@ -44,7 +44,7 @@ aggregation, NLP, brokers/distributed workers, merge or deployment.
 | 1 — durable state | Complete; independently approved after fix round 1 | Original42b577a + fix202688a; final focused/state race/full/Darwin execution and Linux amd64/arm64 builds pass |
 | 2 — scheduler | Complete; independently approved | 206c71b + tracking-only9c7e14a; runtime/race/Pipeline/full checks passed; no review findings |
 | 3 — daemon | Complete; independently approved after fix round 1 | Fresh executor from2840fe5; initial12bf8d0 + fatal-boundary fixb7515ca; actual command/race/vet and helper evidence below |
-| 4 — Compose/acceptance | Implemented and locally validated; awaiting Parent independent review | Scratch production image, offline SDK/TLS Compose acceptance, full/race/vet/platform checks passed; evidence below |
+| 4 — Compose/acceptance | Implemented; independent review fix round 1 validated, awaiting re-review | Scratch production image, offline SDK/TLS Compose acceptance, full/race/vet/platform checks passed; evidence below |
 
 The Parent's plan-local progress ledger/briefs/reports are under
 `.superpowers/sdd/2026-11-08-phase2-execution/`. That directory is ignored scratch;
@@ -339,3 +339,52 @@ promise, or current-head remote CI success is claimed. The new15-minute
 uploads seven-day synthetic evidence. `Test and vet` and tunnel behavior remain
 unchanged. Parent owns final review, fresh-head asynchronous CI and the separate
 four-goal autonomy record; no independent reviewer was spawned by this author.
+
+## Task 4 independent review fix round 1 — exact state and signal evidence
+
+Review of `9285cda..6bce42f` found two Important acceptance false-success paths,
+not production defects. I1: appending a seen row could recreate a missing source
+entry in the inspector's combined map, hiding loss of initialization. I2: the
+shutdown cancellation cursor preceded the second-owner check, so a normal
+collection timeout during that check could satisfy the later cancellation wait.
+The prior saved signal run did show caller cancellation; the finding concerns
+what future runs could falsely accept. Both fixes are confined to the harness.
+
+The read-only inspector now asserts the initialized-source set independently
+before comparing seen keys. Pre-initialization seen marks remain valid product
+behavior; they simply cannot imply an initialization row. Actual SQLite
+regressions reproduce correct A/B seen rows with a missing initialized alpha
+row, and cover initialized A/B, valid initialized-empty and missing-empty state.
+The first case failed RED against the original query logic, then all passed.
+
+Signal cancellation now has its own fresh monitor after the owner scenario.
+While alpha is held, the driver captures a completed-run cursor and fixture-event
+cursor, verifies continuous hold, then stops the monitor. It requires exactly one
+later canceled event, no replacement held request or released page, and exactly
+one later alpha completion with `caller context: context canceled` and without
+`context deadline exceeded`. Regressions reject cancellation before the barrier,
+post-barrier deadline expiry and timeout/replacement; the weaker error-status
+completion check failed RED on both timeout cases before correction.
+
+Fix-round validation (all exit 0), using the same Compose development prefix as
+above: `go test ./integration/monitor -count=1 -v` (0.031s), GCC-enabled
+`go test -race ./integration/monitor -count=1` (1.100s),
+`go test ./... -count=1 -timeout=5m` (daemon 10.264s, fixture 0.063s, state 1.214s),
+and `go vet ./integration/monitor` (no diagnostics). `bash -n` and
+`git diff --check` also passed. Production code/build inputs are unchanged;
+earlier platform/build/native and full-race evidence is not presented as newly
+rerun here.
+
+`integration/monitor/acceptance.sh` exited 0 with project
+`sw-acceptance-1794204230-48469`, including the corrected stopped-state and fresh
+signal assertions and successful scoped cleanup. Actual Go 1.25.14 Linux/arm64
+monitor image: `sha256:30612227dcacf4cc10fda3527ab97ce6295bc1d88ba6032a1d853ec06c452d40`;
+fixture: `sha256:2d7b522a3b37d8883c16b4b638362415a4c8b1ed75ccf628cba740b94f163253`.
+The unchanged production image ID remains stable across each run's scenarios.
+This validation used HEAD `6bce42f` plus the working fix diff, subsequently
+committed; it is not fresh-head remote CI provenance. Ignored RED/GREEN and final
+logs are `task-4-logs/review-i1-*`, `review-i2-*`, and `review-fix1-*` under the
+plan-local scratch directory. Runtime evidence is under
+`.superpowers/sdd/monitor-acceptance/sw-acceptance-1794204230-48469/`, including
+`monitor-signal.log` with actual caller cancellation and the cleanup transcript.
+Parent independent re-review, whole-branch review and final-head CI remain gates.

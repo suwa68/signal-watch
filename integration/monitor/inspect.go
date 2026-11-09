@@ -46,6 +46,17 @@ func inspect(expected string) error {
 	}
 	defer db.Close()
 	db.SetMaxOpenConns(1)
+	if err := inspectStoredState(db, want); err != nil {
+		return err
+	}
+	fmt.Println("PASS stopped read-only state and UID/GID 10001:10001")
+	return nil
+}
+
+// Kept separate from filesystem/ownership checks so malformed persisted facts
+// can be tested with the actual SQLite driver without changing host ownership.
+func inspectStoredState(db *sql.DB, want map[string][]string) error {
+	var err error
 	var version int
 	if err = db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err
@@ -54,6 +65,7 @@ func inspect(expected string) error {
 		return fmt.Errorf("schema version=%d", version)
 	}
 	got := map[string][]string{}
+	initialized := map[string]bool{}
 	rows, err := db.Query("SELECT source_id FROM initialized_sources ORDER BY source_id")
 	if err != nil {
 		return err
@@ -64,12 +76,22 @@ func inspect(expected string) error {
 			rows.Close()
 			return err
 		}
+		initialized[s] = true
 		got[s] = []string{}
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
 		return err
+	}
+	expectedInitialized := map[string]bool{}
+	for source := range want {
+		expectedInitialized[source] = true
+	}
+	// Seen rows are permitted before a source is initialized in production.
+	// They must never manufacture the separate initialization fact here.
+	if !reflect.DeepEqual(initialized, expectedInitialized) {
+		return fmt.Errorf("initialized sources=%v want=%v", initialized, expectedInitialized)
 	}
 	rows, err = db.Query("SELECT source_id,item_key FROM seen_items ORDER BY source_id,item_key")
 	if err != nil {
@@ -99,6 +121,5 @@ func inspect(expected string) error {
 	if !reflect.DeepEqual(got, want) {
 		return fmt.Errorf("stored state=%v want=%v", got, want)
 	}
-	fmt.Println("PASS stopped read-only state and UID/GID 10001:10001")
 	return nil
 }

@@ -262,6 +262,12 @@ func (f *fixture) control(w http.ResponseWriter, r *http.Request) {
 			err = errors.New("source was not continuously held after cursor")
 		}
 		f.mu.Unlock()
+	case "assert-canceled":
+		f.mu.Lock()
+		if f.countLocked("canceled", req.Key, req.After) != 1 || f.countLocked("held", req.Key, req.After) != 0 || f.countLocked("source-response", req.Key, req.After) != 0 {
+			err = errors.New("expected cancellation of exactly the pre-signal held request")
+		}
+		f.mu.Unlock()
 	case "assert":
 		err = f.assertLedger(req.Attempts, req.Replies)
 	default:
