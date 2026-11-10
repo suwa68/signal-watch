@@ -271,6 +271,35 @@ acceptance and full tests/affected race/vet passed. Independent scoped re-review
 approved both findings with no new breakage. The tracked handoff records exact
 commands, image/platform IDs and evidence limits.
 
-All four task gates are complete. Fresh whole-branch review and final-current-head
-Actions are still pending; task review or older-head success is not substituted
-for either. No deferred Minor or parked task finding remains.
+All four task gates passed. No deferred Minor or parked task finding entered the
+whole-branch review.
+
+## Whole-branch review and final scoped re-review
+
+The fresh reviewer inspected the complete `3404598..b9f0c19` diff, existing
+contracts and saved runtime evidence. It found no Critical issue. Its Important
+finding was the missing production-image test for uncertain remote send followed
+by termination and same-volume recollection. The spec's evidence-tier table
+requires this case separately from the internal helper crash window. The Minor
+finding was the absent clean-shutdown record. One agent addressed both in
+`f35224e`. The resumed agent used its saved test work and ran full tests, race,
+vet and actual Linux arm64 Compose acceptance. The handoff records image IDs,
+commands and the sequence of first send, cancellation, retry, response and mark.
+
+The one scoped independent re-review found both original findings addressed.
+It also reproduced a new **Important** regression at `cmd/signalwatch/log.go:68`.
+Using the changed logger in an isolated Go subprocess with fd 1 connected to a
+pipe whose read end was closed, a silent control exited 0 and the final shutdown
+write terminated with a broken pipe. A 25 ms wait bounds a blocked write but
+cannot intercept process-level SIGPIPE. Ordinary connected-output Compose
+acceptance passes. The new failure violates the clean exit 0 contract even
+though worker join and state cleanup have already succeeded.
+
+The review also found a **Minor** assertion gap at
+`cmd/signalwatch/process_test.go:177`. If `store_closed` is absent, its index is
+`-1` and the ordering check passes. The independent unit test observes actual
+join and cleanup, so this assertion gap can be corrected with the subprocess
+regression for the Important finding. Under the single-wave review cap the
+Parent retains draft status and records the remaining corrective pass in the
+[handoff](../handoffs/phase2-monitoring-mvp.md). CI status is tracked for the
+current PR head separately from review readiness.

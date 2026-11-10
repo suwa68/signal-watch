@@ -45,7 +45,7 @@ aggregation, NLP, brokers/distributed workers, merge or deployment.
 | 2 — scheduler | Complete; independently approved | 206c71b + tracking-only9c7e14a; runtime/race/Pipeline/full checks passed; no review findings |
 | 3 — daemon | Complete; independently approved after fix round 1 | Fresh executor from2840fe5; initial12bf8d0 + fatal-boundary fixb7515ca; actual command/race/vet and helper evidence below |
 | 4 — Compose/acceptance | Complete; independently approved after fix round 1 | Original6bce42f + fix8a2fce4; actual corrected offline SDK/TLS acceptance, full tests and affected race/vet pass; platform evidence below |
-| Whole-branch fix wave | I1/M1 implemented and validated; awaiting final scoped review | Required uncertain-send image scenario and bounded clean shutdown record; final evidence below |
+| Whole-branch fix wave | I1/M1 addressed in `f35224e`; scoped re-review left an Important regression open | Production uncertain-send/restart passes. Connected output emits shutdown after cleanup. A closed stdout pipe can cause SIGPIPE on the final record. |
 
 The Parent's plan-local progress ledger/briefs/reports are under
 `.superpowers/sdd/2026-11-08-phase2-execution/`. That directory is ignored scratch;
@@ -99,13 +99,23 @@ do not rerun it in a sandbox permission-failure loop.
 
 ## Next steps
 
-Task 4 fix 8a2fce4 independently passed scoped re-review. The whole-branch review
-then identified uncertain-send acceptance and graceful-shutdown logging gaps;
-the single fix wave below addresses both. Parent now owns one scoped final
-re-review and final push/PR/CI coordination. Verify current-head `Test and vet` and
-`Monitoring acceptance` asynchronously; every push invalidates earlier-head
-results. No merge, deployment, real Telegram, or additional product scope is
-approved by this checkpoint. Tasks 1/2/3 are accepted; do not reimplement them.
+The one whole-branch fix wave at `f35224e` addressed both original findings.
+Its scoped re-review reproduced a new Important SIGPIPE regression in the
+success logger at `cmd/signalwatch/log.go:68`. If stdout's consumer disappears
+while the daemon is idle, the final record can replace exit 0 with SIGPIPE after
+successful cleanup. A focused subprocess using the exact logger reproduced it.
+The Minor test gap at `cmd/signalwatch/process_test.go:177` accepts a missing
+`store_closed` marker. The separate unit test verifies actual cleanup ordering.
+See the [review record](../reviews/2026-11-08-phase2-architecture-review.md).
+
+The Superpowers final review caps the fix wave at one. Keep PR #32 as a draft
+until the user authorizes another corrective pass. Preserve the 25 ms output
+bound, emit the clean record after join and close, and preserve exit 0 if the
+pipe reader is absent. Exercise that condition with a real signal subprocess
+and require the cleanup marker in the existing order assertion. Review the
+result and verify both `Test and vet` and `Monitoring acceptance` against its
+current PR head. The PR description holds the latest CI run. Tasks 1–4 remain
+accepted. Merge, deployment and live Telegram are outside the approved work.
 
 Storage remains `state.OpenSQLite(ctx,directory)` with concrete `Close()`,
 `ErrUnavailable`/`ErrFatal`, the four StateStore methods, modernc v1.59.0 and
@@ -464,7 +474,7 @@ Ignored evidence: `task-4-logs/whole-*` under the plan scratch directory and
 `.superpowers/sdd/monitor-acceptance/sw-acceptance-1794339236-63779/`.
 The ignored `whole-branch-fix-report.md` lists exact commands and limits.
 
-The required uncertain-send scenario is now present. No live Telegram/site,
-physical-power-loss, exactly-once delivery, genuine new-session execution or
-current-head Actions success is claimed. Parent owns the single scoped final
-re-review and fresh-head CI; no merge or deployment is authorized.
+The required uncertain-send scenario is present and independently verified. The
+scoped review also reproduced the closed-stdout SIGPIPE issue and recorded the
+Minor marker assertion gap. The review status and next steps above supersede the
+pre-review checkpoint. Exact CI provenance belongs to the PR head and its run.
