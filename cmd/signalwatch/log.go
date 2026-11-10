@@ -60,11 +60,18 @@ func (l *operationalLog) write(out io.Writer, record map[string]string) {
 }
 
 // A blocked output pipe must never defeat process shutdown. Normal operational
-// writes remain serialized; the final diagnostic gets only a short best-effort
+// writes remain serialized; the final lifecycle record gets only a short best-effort
 // flush budget, including any wait on another write. main then exits the process.
 func (l *operationalLog) finalFailure(message string) {
+	l.finalWrite(func() { l.failure(message) })
+}
+func (l *operationalLog) finalShutdown() {
+	// Global lifecycle record: no variable/secret fields to redact or truncate.
+	l.finalWrite(func() { l.write(l.stdout, map[string]string{"event": "shutdown", "status": "success"}) })
+}
+func (l *operationalLog) finalWrite(write func()) {
 	done := make(chan struct{})
-	go func() { l.failure(message); close(done) }()
+	go func() { write(); close(done) }()
 	timer := time.NewTimer(25 * time.Millisecond)
 	defer timer.Stop()
 	select {

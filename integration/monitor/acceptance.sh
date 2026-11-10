@@ -202,5 +202,37 @@ page empty E
 assert_ledger '{"alpha/C":1,"empty/E":1,"beta/C":2,"beta/D":1,"beta/F":1}' '{"alpha/C":1,"empty/E":1,"beta/C":1,"beta/D":1,"beta/F":1}'
 stop kill-recovery
 inspect_state '{"alpha":["A","B","C"],"beta":["A","B","C","D","F"],"empty":["E"]}'
+# Uncertain remote send: the TLS fixture accepted new U, but its success response
+# is never released to this process. This is NOT SDK-success-before-mark evidence.
+start recreate
+n=$(count_runs alpha)
+mode alpha/U hold
+c=$(cursor)
+ctl '{"op":"page","key":"alpha","items":"A,B,C,U"}' > /dev/null
+await_event send alpha/U "$c"
+ctl "{\"op\":\"assert-send-held\",\"key\":\"alpha/U\",\"after\":$c}"
+dc kill -s SIGKILL monitor
+dc ps -a --format json monitor | dc exec -T fixture /fixture assert-exit 137
+await_event send-canceled alpha/U "$c"
+ctl "{\"op\":\"assert-uncertain-send\",\"key\":\"alpha/U\",\"after\":$c}"
+[ "$(count_runs alpha)" = "$n" ] || fail 'uncertain send unexpectedly completed a source run'
+cp "$logs/monitor-current.log" "$logs/monitor-uncertain-kill.log"
+assert_ledger '{"alpha/C":1,"empty/E":1,"beta/C":2,"beta/D":1,"beta/F":1,"alpha/U":1}' '{"alpha/C":1,"empty/E":1,"beta/C":1,"beta/D":1,"beta/F":1}'
+inspect_state '{"alpha":["A","B","C"],"beta":["A","B","C","D","F"],"empty":["E"]}'
+
+# Same volume, recollect U: a second remote attempt is expected. Only this attempt
+# receives success, completes its source run, and becomes durably seen.
+start recreate
+deliver_held alpha A,B,C,U U
+assert_ledger '{"alpha/C":1,"empty/E":1,"beta/C":2,"beta/D":1,"beta/F":1,"alpha/U":2}' '{"alpha/C":1,"empty/E":1,"beta/C":1,"beta/D":1,"beta/F":1,"alpha/U":1}'
+stop uncertain-recovery
+inspect_state '{"alpha":["A","B","C","U"],"beta":["A","B","C","D","F"],"empty":["E"]}'
+start restart
+page alpha A,B,C,U
+page beta A,B,C,D,F
+page empty E
+assert_ledger '{"alpha/C":1,"empty/E":1,"beta/C":2,"beta/D":1,"beta/F":1,"alpha/U":2}' '{"alpha/C":1,"empty/E":1,"beta/C":1,"beta/D":1,"beta/F":1,"alpha/U":1}'
+stop uncertain-dedup
+inspect_state '{"alpha":["A","B","C","U"],"beta":["A","B","C","D","F"],"empty":["E"]}'
 [ "$(dc images -q monitor)" = "$image_id" ] || fail 'production image changed during acceptance'
 echo 'PASS: unchanged production image offline monitoring acceptance'

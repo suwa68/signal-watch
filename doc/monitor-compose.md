@@ -48,7 +48,10 @@ successful collection, including empty, is silent. Unseen items send before thei
 seen marks commit. A failed C does not block later D; C is retried only if the same
 item is collected again. A disappearing failed item is not queued. Uncertain send
 outcomes or failed/interrupted marks can duplicate. Clean signal shutdown exits 0;
-fatal state/cleanup/shutdown-timeout errors exit nonzero.
+fatal state/cleanup/shutdown-timeout errors exit nonzero. Successful join and state
+cleanup emit one global `{"event":"shutdown","status":"success"}` record on
+stdout. Like final fatal diagnostics, it has a 25-millisecond best-effort flush;
+blocked output can lose this final record but cannot delay exit indefinitely.
 
 ## Offline acceptance
 
@@ -96,15 +99,25 @@ The signal scenario starts a fresh monitor after the owner test, captures both
 fixture-event and completed-run cursors while alpha is held, then requires one
 post-barrier cancellation with no replacement request. Its corresponding single
 completion must contain caller `context canceled` and must not contain
-`context deadline exceeded`; an earlier timeout cannot satisfy shutdown. A profile-gated inspector mounts the
-same state volume read-only with copy-up disabled, refuses live ownership via a
-nonblocking lock, opens SQLite `mode=ro`, and asserts the initialized-source set independently from the exact seen-key sets.
+`context deadline exceeded`; an earlier timeout cannot satisfy shutdown. A
+profile-gated inspector mounts the same state volume read-only with copy-up
+disabled, refuses live ownership via a nonblocking lock, opens SQLite `mode=ro`,
+and asserts the initialized-source set independently from the exact seen-key sets.
 It cannot initialize, migrate, repair, or chown the production state directory.
 The harness also proves that live inspection is refused.
 
-This production-image evidence is ordinary committed SIGKILL continuity. It is
-not a physical-power-loss test, a proof of remote Telegram receipt, or a precise
-post-send/pre-mark crash window. Synchronized state/daemon helper tests cover
+A separate uncertain-send scenario introduces new U into an initialized source.
+The TLS stub records one accepted request and holds its response. The driver
+kills the monitor without releasing it, then asserts exit 137, request cancellation,
+zero response releases/replies and no completed source run. Stopped inspection
+confirms U is unseen. Recreating on the same volume and recollecting U produces a
+second attempt; only this attempt receives success and becomes durably seen.
+Another restart suppresses U. This proves duplicate eligibility after an uncertain
+remote send, not that the first SDK call returned success before a mark.
+
+The production-image evidence covers committed SIGKILL continuity and uncertain
+remote sends. It is not a physical-power-loss test, real Telegram receipt, or a
+precise successful-send/pre-mark crash window. Synchronized state/daemon helper tests cover
 uncommitted baseline and send-return-before-mark crash windows separately; their
 private seams do not exist in the production image. Live Telegram, hosted tunnel
 access, arbitrary host filesystems and operational deployment remain unverified

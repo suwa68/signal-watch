@@ -44,9 +44,10 @@ A clean signal exits 0; runtime/state/cleanup failures or exceeding the fixed
 10-second shutdown grace exit 1; invalid configuration exits 2. If a worker
 ignores cancellation, timeout exits the process without closing its active store.
 Startup and completed runs emit bounded JSON on stdout with `event`, `source_id`
-and `status`; error records contain redacted, truncated details. Fatal command
-errors go to stderr, with a 25-millisecond best-effort final flush so blocked
-output cannot prevent process exit. A completed-run event follows the entire
+and `status`; error records contain redacted, truncated details. After successful
+worker join and state cleanup, one global `shutdown`/`success` record goes to
+stdout. Fatal command errors go to stderr. Both final records use a 25-millisecond
+best-effort flush, so blocked output cannot prevent exit and may lose that record. A completed-run event follows the entire
 Pipeline return, including baseline/mark work. Query CLI/MCP remain independent of this state.
 
 ## Docker monitor

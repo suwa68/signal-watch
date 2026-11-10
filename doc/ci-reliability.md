@@ -50,8 +50,8 @@ credentials only. Every PR head needs its own successful results.
 
 The script checks fresh-volume ownership, actual SDK/TLS/renderer delivery,
 retained silent/empty baselines, failure continuation/recollection, deduplication,
-source independence, signal shutdown, ownership rejection and committed SIGKILL
-recovery. See [exact barriers and limits](monitor-compose.md#offline-acceptance).
+source independence, signal shutdown, ownership rejection, committed SIGKILL
+recovery and uncertain-send termination/recollection. See [exact barriers and limits](monitor-compose.md#offline-acceptance).
 It has bounded waits and project-scoped cleanup. A failed build is a failed job,
 not skipped acceptance. The ordinary Go suite separately tests fixture contracts;
 its tunnel integration package remains intentionally skipped without its image.

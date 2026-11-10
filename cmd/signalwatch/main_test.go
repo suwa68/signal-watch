@@ -430,3 +430,97 @@ func TestCooperativeFatalCompletionCancelsCommandAndRetainsCause(t *testing.T) {
 		t.Fatalf("close/cause lost: closed=%v stderr=%s", closed, &stderr)
 	}
 }
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+func TestCleanShutdownRecordFollowsJoinAndCleanup(t *testing.T) {
+	for _, closeErr := range []error{nil, errors.New("cleanup failed")} {
+		t.Run(fmt.Sprint(closeErr), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			d := testDependencies(ctx)
+			joined := make(chan struct{})
+			closed := make(chan struct{})
+			d.schedule = func(c context.Context, _ []monitor.ScheduledSource, _ func(config.SourceConfig, error)) error {
+				cancel()
+				<-c.Done()
+				close(joined)
+				return c.Err()
+			}
+			d.openStore = func(context.Context, string) (ownedStore, error) {
+				return &testStore{state.NewMemoryStateStore(), func() error { close(closed); return closeErr }}, nil
+			}
+			var output bytes.Buffer
+			out := writerFunc(func(p []byte) (int, error) {
+				if bytes.Contains(p, []byte(`"event":"shutdown"`)) {
+					select {
+					case <-joined:
+					default:
+						t.Error("shutdown logged before workers joined")
+					}
+					select {
+					case <-closed:
+					default:
+						t.Error("shutdown logged before store cleanup")
+					}
+				}
+				return output.Write(p)
+			})
+			code := run([]string{"--sources-dir", definitions(t, "news", "1", "http://127.0.0.1/")}, env, out, out, d)
+			wantCode, wantRecords := 0, 1
+			if closeErr != nil {
+				wantCode, wantRecords = 1, 0
+			}
+			if code != wantCode || strings.Count(output.String(), `"event":"shutdown"`) != wantRecords {
+				t.Fatalf("exit=%d output=%s", code, &output)
+			}
+			if wantRecords == 1 && !strings.Contains(output.String(), `{"event":"shutdown","status":"success"}`) {
+				t.Fatalf("missing bounded shutdown record: %s", &output)
+			}
+			if strings.Contains(output.String(), syntheticToken) {
+				t.Fatal("shutdown leaked token")
+			}
+		})
+	}
+}
+
+func TestBlockedGracefulShutdownRecordRemainsBounded(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	d := testDependencies(ctx)
+	d.schedule = func(c context.Context, _ []monitor.ScheduledSource, _ func(config.SourceConfig, error)) error {
+		cancel()
+		return c.Err()
+	}
+	entered, release, wrote := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	out := writerFunc(func(p []byte) (int, error) {
+		if bytes.Contains(p, []byte(`"event":"shutdown"`)) {
+			close(entered)
+			<-release
+			close(wrote)
+		}
+		return len(p), nil
+	})
+	result := make(chan int, 1)
+	dir := definitions(t, "news", "1", "http://127.0.0.1/")
+	go func() { result <- run([]string{"--sources-dir", dir}, env, out, io.Discard, d) }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("no shutdown attempt")
+	}
+	select {
+	case code := <-result:
+		if code != 0 {
+			t.Errorf("exit=%d", code)
+		}
+	case <-time.After(250 * time.Millisecond):
+		close(release)
+		<-result
+		t.Fatal("blocked shutdown record prevented clean exit")
+	}
+	close(release)
+	<-wrote
+}

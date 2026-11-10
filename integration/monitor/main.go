@@ -245,9 +245,21 @@ func (f *fixture) control(w http.ResponseWriter, r *http.Request) {
 		ch, ok := f.releases[req.Key]
 		if ok {
 			delete(f.releases, req.Key)
+			f.recordLocked("released", req.Key)
 			close(ch)
 		} else {
 			err = errors.New("no held send")
+		}
+		f.mu.Unlock()
+	case "assert-send-held", "assert-uncertain-send":
+		f.mu.Lock()
+		canceled := 0
+		if req.Op == "assert-uncertain-send" {
+			canceled = 1
+		}
+		_, held := f.releases[req.Key]
+		if !held || f.countLocked("send", req.Key, req.After) != 1 || f.countLocked("send-canceled", req.Key, req.After) != canceled || f.countLocked("released", req.Key, req.After) != 0 || f.countLocked("replied", req.Key, req.After) != 0 || f.countLocked("failed", req.Key, req.After) != 0 {
+			err = errors.New("expected exactly one unreleased send with the requested cancellation state")
 		}
 		f.mu.Unlock()
 	case "getme-count":

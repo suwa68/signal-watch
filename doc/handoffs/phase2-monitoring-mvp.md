@@ -45,6 +45,7 @@ aggregation, NLP, brokers/distributed workers, merge or deployment.
 | 2 — scheduler | Complete; independently approved | 206c71b + tracking-only9c7e14a; runtime/race/Pipeline/full checks passed; no review findings |
 | 3 — daemon | Complete; independently approved after fix round 1 | Fresh executor from2840fe5; initial12bf8d0 + fatal-boundary fixb7515ca; actual command/race/vet and helper evidence below |
 | 4 — Compose/acceptance | Complete; independently approved after fix round 1 | Original6bce42f + fix8a2fce4; actual corrected offline SDK/TLS acceptance, full tests and affected race/vet pass; platform evidence below |
+| Whole-branch fix wave | I1/M1 implemented and validated; awaiting final scoped review | Required uncertain-send image scenario and bounded clean shutdown record; final evidence below |
 
 The Parent's plan-local progress ledger/briefs/reports are under
 `.superpowers/sdd/2026-11-08-phase2-execution/`. That directory is ignored scratch;
@@ -98,9 +99,10 @@ do not rerun it in a sandbox permission-failure loop.
 
 ## Next steps
 
-Task 4 fix8a2fce4 independently passed scoped re-review. Parent now reviews the complete branch against
-the approved spec, resolving material findings before final handoff. Push/PR/CI
-coordination belongs to Parent. Verify current-head `Test and vet` and
+Task 4 fix 8a2fce4 independently passed scoped re-review. The whole-branch review
+then identified uncertain-send acceptance and graceful-shutdown logging gaps;
+the single fix wave below addresses both. Parent now owns one scoped final
+re-review and final push/PR/CI coordination. Verify current-head `Test and vet` and
 `Monitoring acceptance` asynchronously; every push invalidates earlier-head
 results. No merge, deployment, real Telegram, or additional product scope is
 approved by this checkpoint. Tasks 1/2/3 are accepted; do not reimplement them.
@@ -111,7 +113,7 @@ Storage remains `state.OpenSQLite(ctx,directory)` with concrete `Close()`,
 report follows the entire RunOnce return. Query composition keeps
 `LoadHTMLCatalogAndRunner` and the original wrapper. No accepted core API changed
 for packaging. The task sections below retain historical implementation/review
-evidence; the latest Task 4 section is the current runtime checkpoint.
+evidence; the latest whole-branch fix section is the current runtime checkpoint.
 
 ## Task 3 fresh-context continuation rehearsal (2026-11-08)
 
@@ -393,3 +395,76 @@ review and final-head CI remain gates. Run42571122272 for8a2fce4 was observed
 in progress while Parent completed this integration handoff; no watch was used.
 The [four-goal autonomy record](../phase2-autonomy-validation.md) preserves actual
 observations, unverified claims and Parent rulings for a fresh session.
+
+## Whole-branch fix wave — uncertain send and graceful shutdown (2026-11-11)
+
+The independent review of `3404598..b9f0c19` found Important I1: the approved
+spec's uncertain-remote-send production-image scenario was missing; the earlier
+conditional reading of the task brief did not authorize its omission. Minor M1:
+a clean signal lacked the specified shutdown log. One author addressed both in
+one fix wave without new production test seams/configuration or delegated work.
+The usage-limit interruption was resumed from saved working edits and RED/GREEN
+logs; it did not start another implementation/review loop. Parent's separate
+autonomy document was left untouched.
+
+The new initialized-source U scenario records one valid TLS send while withholding
+its success response, asserts it is still held, SIGKILLs the ordinary monitor,
+and observes exit 137 plus cancellation. It asserts exactly one first attempt,
+no released/success/failure response and no completed alpha run, then inspects
+the stopped state and confirms U absent. Same-volume recreation/recollection
+attempts U again, releases only the second response, waits for successful run
+completion and verifies U persisted. Another restart suppresses U. This is
+uncertain remote send/duplicate eligibility, not a precise SDK-success/pre-mark
+window; synchronized helper-tier evidence remains separate. Fixture regressions
+cover still-held, canceled, released, repeated and stale-cursor cases. Explicit
+release events now make unreleased-response evidence auditable.
+
+The sole production change adds one static global
+`{"event":"shutdown","status":"success"}` stdout record after `execute` returns
+with successful worker join/store cleanup. Error/timeout paths retain fatal
+logging without a success shutdown record. Success and fatal final records share
+the existing 25 ms best-effort flush, including mutex/output waits; no queue,
+configuration or longer shutdown grace was introduced. Blocked output can still
+lose the final record. RED tests showed missing records for clean/init/timer
+signals; GREEN confirms ordering, no success record on cleanup failure, and
+bounded blocked graceful logging alongside existing blocked-operational/fatal
+shutdown coverage. Actual signal subprocesses also verify the record.
+
+After resume, Docker's configured socket was absent because the existing Rancher
+Desktop runtime was stopped. Starting that app restored Docker 29.5.3; no socket
+permissions or runtime configuration were changed. The initial unavailable-engine
+invocation is not a test result. Final validation used Go 1.25.14 Linux/arm64 and
+Compose v5.3.1. All these commands exited 0:
+
+```sh
+integration/monitor/acceptance.sh
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go test ./... -count=1 -timeout=5m
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T -e CGO_ENABLED=1 -e CC=gcc go go test -race ./... -count=1 -timeout=5m
+docker compose --env-file /dev/null -p signalwatch-phase2-dev run --rm -T go go vet ./...
+```
+
+Full suite: daemon 10.313s, fixture 0.132s, state 1.527s. Full race: daemon
+14.351s, fixture 1.126s, state 5.387s. Vet emitted no diagnostics; ordinary tunnel
+integration retains its image-gated skip. Production logging changed, so this
+fresh full/race/vet run supersedes prior-code evidence. Linux amd64/arm64 and
+Darwin arm64 monitor builds also passed. A fresh Darwin arm64 command test binary
+ran clean/init/timer, blocked graceful/operational and fatal-shutdown checks
+natively, and the native command `--help` exited 0. Linux amd64 remains local
+compile-only evidence; Linux arm64 has actual image execution.
+
+Final offline project `sw-acceptance-1794339236-63779` passed and was cleaned.
+Monitor image: `sha256:73eed504ad034623edf3b266b98dc9816f5d8d82c75af6e78299d40c6e31260e`;
+fixture: `sha256:0c94480500a0a24d4bffcb186cf5719ed9e75b17e5557bd7545a57c8fc07c3e6`.
+Image IDs remained stable throughout the scenarios. U's recorded ledger was
+send 87, canceled 89, send 96, released 97, replied 98; only the second attempt
+had a completed success and persisted key. `monitor-signal.log` contains one
+actual global shutdown/success record. Evidence records HEAD `b9f0c19` plus the
+working fix diff, subsequently committed; it is not remote final-head CI.
+Ignored evidence: `task-4-logs/whole-*` under the plan scratch directory and
+`.superpowers/sdd/monitor-acceptance/sw-acceptance-1794339236-63779/`.
+The ignored `whole-branch-fix-report.md` lists exact commands and limits.
+
+The required uncertain-send scenario is now present. No live Telegram/site,
+physical-power-loss, exactly-once delivery, genuine new-session execution or
+current-head Actions success is claimed. Parent owns the single scoped final
+re-review and fresh-head CI; no merge or deployment is authorized.

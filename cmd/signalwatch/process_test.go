@@ -170,6 +170,16 @@ func TestSubprocessSignalLifecycle(t *testing.T) {
 				t.Fatal(err)
 			}
 			output := p.finish(t, tc.want)
+			if tc.want == 0 {
+				if strings.Count(output, `"event":"shutdown"`) != 1 || !strings.Contains(output, `"status":"success"`) {
+					t.Fatalf("missing clean shutdown record: %s", output)
+				}
+				if strings.Index(output, `"event":"shutdown"`) < strings.Index(output, "store_closed") {
+					t.Fatalf("shutdown logged before store cleanup: %s", output)
+				}
+			} else if strings.Contains(output, `"event":"shutdown"`) {
+				t.Fatalf("failed shutdown reported success: %s", output)
+			}
 			if tc.mode == "noncooperative" {
 				if time.Since(started) < 9*time.Second || time.Since(started) > 15*time.Second {
 					t.Fatalf("production grace took %v", time.Since(started))

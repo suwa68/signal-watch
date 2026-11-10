@@ -471,14 +471,18 @@ Fatal state results cancel siblings only after the current Pipeline returns,
 then all workers join before storage closes. SIGINT/SIGTERM exit cleanly unless
 fatal/cleanup errors occur or the fixed 10-second grace expires. Startup and
 completed-run JSON logs identify each source; error output redacts the bot token
-and Telegram request URLs and truncates variable fields. Final diagnostics have
-a 25-millisecond best-effort flush budget so blocked output cannot hold exit;
+and Telegram request URLs and truncates variable fields. Successful worker join
+and store cleanup produce one global `shutdown`/`success` record. That record and
+final fatal diagnostics share a 25-millisecond best-effort flush budget, so
+blocked output cannot hold exit and may lose the final record;
 normal operational output may backpressure workers. The production scratch image
 contains only the monitor binary, CA certificates and an owned state directory.
 Compose uses read-only sources/root, a retained named state volume, init,
 `unless-stopped` restart and a 15-second stop grace. A separate internal-network
-fixture exercises actual SDK TLS and ordinary committed SIGKILL continuity;
-precise crash windows remain helper-tier evidence. See
+fixture exercises actual SDK TLS, ordinary committed SIGKILL continuity, and
+uncertain-send termination/recollection while a successful response is withheld.
+That uncertain outcome is distinct from SDK success before a mark; precise
+internal crash windows remain helper-tier evidence. See
 [Compose operations and acceptance](monitor-compose.md).
 
 SQLite retains initialized sources and seen keys across restart; the memory

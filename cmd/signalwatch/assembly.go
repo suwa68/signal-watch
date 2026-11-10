@@ -164,6 +164,9 @@ func onlyCanceled(err error) bool {
 func finish(done outcome, logs *operationalLog) int {
 	if done.err != nil {
 		logs.finalFailure(done.err.Error())
+	} else if done.code == 0 {
+		// execute has returned after its deferred store cleanup and worker join.
+		logs.finalShutdown()
 	}
 	return done.code
 }
