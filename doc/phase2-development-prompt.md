@@ -3,7 +3,8 @@
 Use the following prompt when starting or resuming Phase 2. It uses existing
 Superpowers skills and Codex subagents; it installs no custom skill, agent profile,
 or framework. The [current plan](../docs/superpowers/plans/2026-11-08-phase2-monitoring-mvp.md)
-is still a proposal pending explicit human approval. This prompt is not approval.
+was approved for implementation by the user's "start phase 2 implementation"
+instruction on 2026-11-08. This reusable prompt itself never grants approval.
 
 ---
 
@@ -37,10 +38,10 @@ implementation/tests. Verify branch/HEAD and reconcile the progress ledger with
 Git and the current PR head before choosing the next task. Do not restart planning
 or repeat completed work merely because this is a new session.
 
-For the present checkpoint, strengthen and review the existing plan, then stop
-for human plan approval. Approval of this process prompt is not approval to
-implement Phase 2. During later authorized execution, ordinary status questions
-do not suspend work.
+The current checkpoint is authorized execution of the reviewed plan. Follow the
+tracked execution plan/ledger and handoff. A future unapproved architecture
+expansion still requires its own applicable approval. Ordinary status questions
+do not suspend already authorized work.
 
 ## Independent Architecture Review Gate
 

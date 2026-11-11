@@ -192,8 +192,130 @@ acceptance condition remain unverified. No Phase 2 implementation is authorized.
 
 ## Human approval boundary
 
+This paragraph records the review-era boundary; subsequent implementation
+authorization is recorded in the execution checkpoint below.
+
 The documentation/process changes are requested. Phase 2 implementation still
 requires explicit approval of the reviewed plan, including SQLite/dependency and
 ownership choices, completion-based cadence/timing, restart/delivery limitations,
 and batch-drain fatal detection. A review verdict or merging this documentation
 PR does not satisfy that separate approval gate. Do not auto-merge or deploy.
+
+## Authorized execution checkpoint: state-layer material review
+
+The user authorized Phase 2 implementation on 2026-11-08. Task 1 added SQLite
+state in `42b577a`, then its independent code review reproduced two Important defects:
+normal cancellation could become fatal through ErrTxDone, and native Close could
+precede database/sql's automatic rollback. Existing green suites did not cover
+those windows. Parent resumed the original implementer rather than bypass review.
+
+Fix `202688a` assigns one synchronous transaction-termination owner using a private
+uncanceled lifetime; normal acquisition/SQL still use caller context and commit
+checks cancellation. Actual interrupted INSERT testing also exposed native SQLite
+auto-rollback. A cleanup-only SAVEPOINT followed by full Rollback makes both native
+states safe without data writes, RELEASE/COMMIT or error-string suppression.
+Cleanup errors remain fatal with retained causes.
+
+Independent scoped re-review accepted both findings and the material lifetime/
+SAVEPOINT choice, with no new fix-diff findings. Actual focused, state race, full
+suite and Darwin state execution passed; Linux amd64/arm64 compiled. See the
+[implementation handoff](../handoffs/phase2-monitoring-mvp.md) and committed
+[lifecycle regressions](../../internal/state/sqlite_lifecycle_test.go). The known
+pre-commit cancellation race window and lock-wait versus filesystem-I/O bound
+remain disclosed. This closes the state-layer AR-4 implementation concerns, not
+the future scheduler/daemon/production-image acceptance requirements.
+
+## Authorized execution checkpoint: scheduler and daemon
+
+Scheduler206c71b (net task head9c7e14a) passed independent spec/quality review
+without findings. Channel barriers and a real Pipeline C/D regression verify
+independent fixed delays, fatal-before-cancellation aggregate precedence and
+all-worker joining; package/race/Pipeline/full-suite evidence passed.
+
+A fresh-context executor continued from tracked checkpoint2840fe5, inferred
+Task 3 without consequential missing context, and implemented daemon12bf8d0.
+This is actual fresh-context execution, not genuine new-session evidence. Its
+self-review reproduced blocked-output diagnostics defeating shutdown and fixed
+that before independent review, retaining a25ms best-effort final flush.
+
+Independent daemon review then found Important I1: scheduler cancellation alone
+did not activate command grace, so a fatal completion followed by blocked
+reporting/noncooperative sibling could hang without a signal. Fixb7515ca adds a
+command-owned Runner that cancels the command with the original fatal cause after
+Pipeline return and before scheduler reporting/join. Accepted store/scheduler and
+the reporter's reporting-only role are unchanged.
+
+Real Pipeline/runtime/localHTTP/fatal-store seam regressions failed without an
+OS signal, then passed for blocked completion output, noncooperative sibling and
+cooperative cause retention. Final affected command tests/race/vet passed.
+Scoped independent re-review accepted I1, no new findings. Resources still close
+after workers; timeout leaves active resources to process exit. Ordinary output
+may backpressure workers; final diagnostics may be lost. Production-image/TLS/
+volume acceptance and final current-head CI remain Task 4 obligations.
+
+## Authorized execution checkpoint: production-image acceptance
+
+Task 4 added the ordinary monitor image, Compose runtime and offline HTML/Telegram
+TLS fixtures in6bce42f. Actual Linux arm64 full/race/vet and production-image
+acceptance passed; both Actions jobs also passed for that commit. Independent
+review still found two Important false-success paths: seen rows could conceal a
+missing initialized marker, and an old natural timeout could satisfy the later
+signal-cancellation assertion. Neither was a demonstrated production defect.
+
+Fix8a2fce4 compares initialization independently and gives signal shutdown a fresh
+monitor plus event/completion cursors. Actual SQLite and request/log regressions
+failed before correction, then passed. The new assertion requires one current
+request cancellation and one caller-context-canceled completion, rejecting old
+events, deadline expiry and request replacement. Actual corrected Compose
+acceptance and full tests/affected race/vet passed. Independent scoped re-review
+approved both findings with no new breakage. The tracked handoff records exact
+commands, image/platform IDs and evidence limits.
+
+All four task gates passed. No deferred Minor or parked task finding entered the
+whole-branch review.
+
+## Whole-branch review and final scoped re-review
+
+The fresh reviewer inspected the complete `3404598..b9f0c19` diff, existing
+contracts and saved runtime evidence. It found no Critical issue. Its Important
+finding was the missing production-image test for uncertain remote send followed
+by termination and same-volume recollection. The spec's evidence-tier table
+requires this case separately from the internal helper crash window. The Minor
+finding was the absent clean-shutdown record. One agent addressed both in
+`f35224e`. The resumed agent used its saved test work and ran full tests, race,
+vet and actual Linux arm64 Compose acceptance. The handoff records image IDs,
+commands and the sequence of first send, cancellation, retry, response and mark.
+
+The one scoped independent re-review found both original findings addressed.
+It also reproduced a new **Important** regression at `cmd/signalwatch/log.go:68`.
+Using the changed logger in an isolated Go subprocess with fd 1 connected to a
+pipe whose read end was closed, a silent control exited 0 and the final shutdown
+write terminated with a broken pipe. A 25 ms wait bounds a blocked write but
+cannot intercept process-level SIGPIPE. Ordinary connected-output Compose
+acceptance passes. The new failure violates the clean exit 0 contract even
+though worker join and state cleanup have already succeeded.
+
+The review also found a **Minor** assertion gap at
+`cmd/signalwatch/process_test.go:177`. If `store_closed` is absent, its index is
+`-1` and the ordering check passes. The independent unit test observes actual
+join and cleanup, so this assertion gap can be corrected with the subprocess
+regression for the Important finding. The Parent recorded both findings in the
+draft and paused at the single-wave review cap. The user then resumed the
+corrective pass.
+
+The fresh scoped reviewer inspected `8b7bea5..98b8dc3` and the actual Go Unix
+file behavior. For final records only, the command uses
+`SyscallConn.Control` and `F_DUPFD_CLOEXEC` to borrow a live standard descriptor
+and obtain a duplicate above fd 2. A broken pipe on that descriptor is an
+ordinary write error. The duplicate closes after use. Descriptor failures
+drop the record within the existing best-effort policy. The 25 ms budget
+still covers mutex contention and output.
+
+The review closed the Important and Minor findings without new breakage. Real
+signal subprocesses reproduce the pre-fix SIGPIPE after SQLite cleanup and
+verify exit 0 with closed stdout and exit 1 with closed stderr after the fix.
+Connected-output tests require one exact success record after the cleanup
+marker. Full tests, race, vet and Linux arm64 production-image acceptance
+passed. Darwin arm64 evidence for this pass is a cross-build. The
+[handoff](../handoffs/phase2-monitoring-mvp.md) retains commands and provenance.
+The draft PR description records CI for its current head.

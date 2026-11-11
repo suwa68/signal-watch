@@ -15,7 +15,9 @@ seen marking.
 
 This slice is a reusable Go API. It adds no daemon, scheduler, NLP stage,
 durable state, retry loop, outbox, routing framework, or external adapter.
-`SourceConfig.IntervalSeconds` does not schedule calls.
+`SourceConfig.IntervalSeconds` does not schedule calls within Pipeline itself.
+The later `cmd/signalwatch` daemon composes this unchanged API with fixed-delay
+source loops and SQLite state; see the [monitor command](../README.md#monitor-command).
 
 ## API and boundaries
 
@@ -215,10 +217,10 @@ A later caller-driven run can retry only when the item is collected again with
 the same identity while relevant state is available. Failed items are not saved
 as durable pending snapshots; disappearance from the source can prevent retry.
 
-Process restart loses baseline and seen state. The new process establishes a
-new silent baseline, so restart continuity and recovery of pending deliveries
-are not guaranteed. Duplicate delivery is possible, but this is neither
-exactly-once nor durable at-least-once delivery. No update/deletion semantics,
+The v1 memory-store examples lose baseline and seen state on restart and
+establish a new silent baseline. The monitor's SQLite store retains initialized
+sources and seen keys, but retains no pending delivery snapshots. Duplicate
+delivery is possible, but this is neither exactly-once nor durable at-least-once delivery. No update/deletion semantics,
 content diffs, or destination-specific state are added.
 
 ## Local verification
@@ -261,3 +263,11 @@ docker compose run --rm go go vet ./...
 docker compose run --rm go go test ./...
 docker compose run --rm go go test -race ./...
 ```
+
+## Production monitor acceptance
+
+The [Compose monitor guide](monitor-compose.md) documents nonroot named-volume ownership,
+retained state across restart/recreation, failure and shutdown assumptions, and
+the offline unchanged-image SDK/TLS acceptance. Its committed-state SIGKILL
+results are distinct from synchronized helper crash windows and do not establish
+exactly-once delivery or real Telegram/network availability.

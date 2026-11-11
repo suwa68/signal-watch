@@ -1,0 +1,13 @@
+# The production build context contains only the Go inputs it consumes.
+**
+!Dockerfile.monitor
+!go.mod
+!go.sum
+!cmd/
+!cmd/signalwatch/
+!cmd/signalwatch/*.go
+!internal/
+!internal/**/
+!internal/**/*.go
+**/*_test.go
+**/.*

@@ -600,3 +600,11 @@ When finished, report:
 6. tests executed and results,
 7. assumptions/deviations,
 8. unresolved questions for architecture discussion.
+
+## Production monitor acceptance
+
+The [Compose monitor guide](../monitor-compose.md) documents nonroot named-volume ownership,
+retained state across restart/recreation, failure and shutdown assumptions, and
+the offline unchanged-image SDK/TLS acceptance. Its committed-state SIGKILL
+results are distinct from synchronized helper crash windows and do not establish
+exactly-once delivery or real Telegram/network availability.

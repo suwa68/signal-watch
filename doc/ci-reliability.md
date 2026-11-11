@@ -1,7 +1,8 @@
 # CI reliability
 
 The `CI` workflow runs on every pull request and on pushes to `main`. Its
-existing `Test and vet` check includes three required validation steps:
+`Test and vet` and `Monitoring acceptance` jobs are mandatory workflow jobs (no
+manual dispatch or continue-on-error). `Test and vet` includes:
 
 ```sh
 go test -count=1 -timeout=5m ./...
@@ -35,6 +36,29 @@ docker compose --env-file /dev/null run --rm -T go go vet ./...
 These tests use local fixtures and HTTP servers. They do not require Telegram
 credentials or fetch monitored public sources. The tunnel integration test is
 skipped by the ordinary Go suite because it requires its dedicated image.
+
+## Monitoring acceptance
+
+`Monitoring acceptance` runs `integration/monitor/acceptance.sh` on Ubuntu with a
+15-minute job timeout. It builds the unchanged production monitor and one test
+fixture, then forbids pulls/builds during the isolated runtime scenarios. It
+requires Docker Compose, public base-image/module availability at build time,
+and no host Go, credentials, live sources, host ports or mounted Docker socket.
+The job retains read-only permissions and checkout `persist-credentials: false`.
+Evidence is uploaded for seven days, including on failure; it contains synthetic
+credentials only. Every PR head needs its own successful results.
+
+The script checks fresh-volume ownership, actual SDK/TLS/renderer delivery,
+retained silent/empty baselines, failure continuation/recollection, deduplication,
+source independence, signal shutdown, ownership rejection, committed SIGKILL
+recovery and uncertain-send termination/recollection. See [exact barriers and limits](monitor-compose.md#offline-acceptance).
+It has bounded waits and project-scoped cleanup. A failed build is a failed job,
+not skipped acceptance. The ordinary Go suite separately tests fixture contracts;
+its tunnel integration package remains intentionally skipped without its image.
+
+The check name is available for repository administrators to require in branch
+protection. This change does not modify branch-protection settings or the existing
+optional tunnel workflow/runtime.
 
 ## Optional Docker tunnel smoke
 

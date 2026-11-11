@@ -4,13 +4,71 @@ A configurable source-monitoring system designed to detect meaningful changes in
 
 The current scope covers loading and validating YAML source definitions,
 extracting static HTML into a common `MonitorItem` model, establishing a
-process-local initial baseline, and delivering later unseen items to Telegram.
-The callable application pipeline creates notifications from original item
-metadata with an empty summary and marks items seen only after successful
-delivery. NLP, scheduling, durable state, richer change detection, and alert
-rules remain future work.
+silent initial baseline, and delivering later unseen items to Telegram.
+The monitor command now runs independent fixed-delay source loops with SQLite
+state retained across restarts. The callable application pipeline creates
+notifications from original item metadata with an empty summary and marks items
+seen only after successful delivery. NLP, richer change detection, and alert
+rules remain future work. A nonroot Docker Compose monitor retains state in a
+named volume; offline acceptance exercises the unchanged production image.
 
 See the [architecture documentation](doc/architecture.md) for details.
+
+## Monitor command
+
+`go run ./cmd/signalwatch --sources-dir /path/to/sources --state-dir /path/to/state`
+starts the monitor using `SIGNALWATCH_TELEGRAM_BOT_TOKEN` and
+`SIGNALWATCH_TELEGRAM_CHAT_ID`. `--sources-dir` is required; `--state-dir` defaults
+to `/state`. Use a writable local directory retained across restarts, and keep the
+Telegram destination stable for that state. Startup validates the complete HTML
+catalog and intervals, acquires exclusive lifetime ownership of the state
+directory, then initializes Telegram (`getMe`, bounded by the SDK's five seconds).
+An empty catalog or invalid definition rejects the entire startup.
+
+One Pipeline per source runs immediately, then waits `interval_seconds` after
+completion. Sources progress independently. Collection retains its 15-second
+HTTP bound; each send gets a 20-second child context. Normal item failures wait
+for the next regular collection; there is no pending-item queue. A fatal state
+failure cancels all workers after its Pipeline returns, possibly after remaining
+items have been attempted.
+
+The first successful collection, even empty, atomically establishes a silent
+baseline. SQLite retains baseline and seen keys across restarts. A successful
+send precedes the durable seen mark; an uncertain send or interrupted/failed
+mark may duplicate on recollection. Disappearing failed items have no delivery
+guarantee. Only one process may own a state directory; retain `state.db` and its
+stable `.signalwatch.lock` together, without deleting the lock file.
+
+SIGINT/SIGTERM cancel requests and timers. Workers finish before state closes.
+A clean signal exits 0; runtime/state/cleanup failures or exceeding the fixed
+10-second shutdown grace exit 1; invalid configuration exits 2. If a worker
+ignores cancellation, timeout exits the process without closing its active store.
+Startup and completed runs emit bounded JSON on stdout with `event`, `source_id`
+and `status`; error records contain redacted, truncated details. After successful
+worker join and state cleanup, one global `shutdown`/`success` record goes to
+stdout. Fatal command errors go to stderr. Both final records use a 25-millisecond
+best-effort flush, so blocked output cannot prevent exit and may lose that record. A completed-run event follows the entire
+Pipeline return, including baseline/mark work. Query CLI/MCP remain independent of this state.
+
+## Docker monitor
+
+Supply `SIGNALWATCH_SOURCES_DIR`, `SIGNALWATCH_TELEGRAM_BOT_TOKEN` and
+`SIGNALWATCH_TELEGRAM_CHAT_ID`, then run:
+
+```sh
+docker compose -p signalwatch-monitor -f compose.monitor.yaml up -d --build
+```
+
+The production service uses a read-only root filesystem/source mount, a nonroot
+owned state volume, automatic restart and a 15-second stop grace. Keep the same
+project/volume across upgrades; deleting the volume resets monitoring state.
+See [monitor Compose operations and offline acceptance](doc/monitor-compose.md)
+for setup, lifecycle, failure assumptions and evidence limits. The deterministic
+credential-free production-image check needs no host Go:
+
+```sh
+integration/monitor/acceptance.sh
+```
 
 ## Query v1
 
@@ -133,9 +191,9 @@ An example version 1 source definition is available at
 
 `application.NewPipeline(collector, store, sender)` assembles the existing source
 runner and baseline/deduplication processor with a bound notification sender.
-Call `pipeline.RunOnce(ctx, sourceConfig)` repeatedly in the same process, reusing
-the pipeline and memory store. The first successful collection, including an
-empty collection, establishes a silent baseline. Later new items are delivered
+Call `pipeline.RunOnce(ctx, sourceConfig)` repeatedly, reusing the pipeline and
+store. The monitor binds SQLite; callable v1 examples use a memory store. The
+first successful collection, including an empty collection, establishes a silent baseline. Later new items are delivered
 sequentially with their original title, source name, optional URL and publication
 time, and no summary.
 
@@ -156,9 +214,9 @@ and uses the real Telegram renderer with a recording sender. Repeated calls
 demonstrate a silent A/B baseline, delivery of C from A/B/C, and suppression of C
 on the next run. It sends no Telegram messages.
 
-State is process-local: restarting establishes a new silent baseline. Failed
-items can be tried on a later call only if they are collected again with the
-same identity. There is no durable pending-item snapshot or delivery guarantee;
+The memory-store examples lose state on restart and establish a new silent
+baseline; the monitor's SQLite store retains it. Failed items can be tried on a
+later call only if they are collected again with the same identity. There is no durable pending-item snapshot or delivery guarantee;
 an uncertain send or failed state write can cause a duplicate. Keep the single
 destination binding stable for the pipeline's lifetime.
 
