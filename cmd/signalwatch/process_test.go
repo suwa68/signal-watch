@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -37,6 +38,10 @@ func TestDaemonProcessHelper(t *testing.T) {
 	if mode == "" {
 		return
 	}
+	markers := os.Stdout
+	if mode == "closed_stdout" {
+		markers = os.Stderr
+	}
 	var ctx context.Context
 	d := testDependencies(context.Background())
 	d.signalContext = func() (context.Context, context.CancelFunc) {
@@ -49,8 +54,20 @@ func TestDaemonProcessHelper(t *testing.T) {
 			store, err := state.OpenSQLite(c, dir)
 			return &beforeMarkStore{store}, err
 		}
-		return &testStore{state.NewMemoryStateStore(), func() error {
-			fmt.Println("store_closed")
+		var store state.StateStore = state.NewMemoryStateStore()
+		closeStore := func() error { return nil }
+		if mode == "closed_stdout" || mode == "closed_stderr" {
+			sqlite, err := state.OpenSQLite(c, dir)
+			if err != nil {
+				return nil, err
+			}
+			store, closeStore = sqlite, sqlite.Close
+		}
+		return &testStore{store, func() error {
+			if err := closeStore(); err != nil {
+				return err
+			}
+			fmt.Fprintln(markers, "store_closed")
 			if mode == "cleanup" {
 				return errors.New("cleanup failed")
 			}
@@ -63,7 +80,7 @@ func TestDaemonProcessHelper(t *testing.T) {
 			panic("scheduled after initialization cancellation")
 		}
 	}
-	if mode == "noncooperative" || mode == "fatal" || mode == "cleanup" {
+	if mode == "noncooperative" || mode == "fatal" || mode == "cleanup" || mode == "closed_stderr" {
 		d.schedule = func(c context.Context, _ []monitor.ScheduledSource, _ func(config.SourceConfig, error)) error {
 			fmt.Println("worker_started")
 			if mode == "noncooperative" {
@@ -71,21 +88,21 @@ func TestDaemonProcessHelper(t *testing.T) {
 			}
 			<-c.Done()
 			fmt.Println("worker_finished")
-			if mode == "fatal" {
+			if mode == "fatal" || mode == "closed_stderr" {
 				return errors.Join(c.Err(), state.ErrFatal)
 			}
 			return c.Err()
 		}
 	}
-	if mode == "timer" || mode == "request" {
+	if mode == "timer" || mode == "request" || mode == "closed_stdout" {
 		d.schedule = func(c context.Context, s []monitor.ScheduledSource, report func(config.SourceConfig, error)) error {
 			if mode == "request" {
 				fmt.Println("worker_started")
 			}
 			return monitor.Run(c, s, func(cfg config.SourceConfig, err error) {
 				report(cfg, err)
-				if mode == "timer" {
-					fmt.Println("worker_started")
+				if mode != "request" {
+					fmt.Fprintln(markers, "worker_started")
 				}
 			})
 		}
@@ -103,9 +120,10 @@ func TestDaemonProcessHelper(t *testing.T) {
 }
 
 type helperProcess struct {
-	cmd     *exec.Cmd
-	scanner *bufio.Scanner
-	cancel  context.CancelFunc
+	cmd        *exec.Cmd
+	scanner    *bufio.Scanner
+	cancel     context.CancelFunc
+	brokenPipe io.Closer
 }
 
 func startHelper(t *testing.T, mode, dir, stateDir string) *helperProcess {
@@ -117,13 +135,27 @@ func startHelper(t *testing.T, mode, dir, stateDir string) *helperProcess {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd.Stderr = cmd.Stdout
+	var output io.Reader = stdout
+	var brokenPipe io.Closer
+	if mode == "closed_stdout" || mode == "closed_stderr" {
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mode == "closed_stdout" {
+			output, brokenPipe = stderr, stdout
+		} else {
+			brokenPipe = stderr
+		}
+	} else {
+		cmd.Stderr = cmd.Stdout
+	}
 	if err = cmd.Start(); err != nil {
 		cancel()
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { cancel(); _ = cmd.Process.Kill() })
-	return &helperProcess{cmd, bufio.NewScanner(stdout), cancel}
+	return &helperProcess{cmd: cmd, scanner: bufio.NewScanner(output), cancel: cancel, brokenPipe: brokenPipe}
 }
 func (p *helperProcess) await(t *testing.T, want string) {
 	t.Helper()
@@ -171,11 +203,14 @@ func TestSubprocessSignalLifecycle(t *testing.T) {
 			}
 			output := p.finish(t, tc.want)
 			if tc.want == 0 {
-				if strings.Count(output, `"event":"shutdown"`) != 1 || !strings.Contains(output, `"status":"success"`) {
+				lines := strings.Split(output, "\n")
+				shutdown := slices.Index(lines, `{"event":"shutdown","status":"success"}`)
+				if shutdown < 0 || strings.Count(output, `"event":"shutdown"`) != 1 {
 					t.Fatalf("missing clean shutdown record: %s", output)
 				}
-				if strings.Index(output, `"event":"shutdown"`) < strings.Index(output, "store_closed") {
-					t.Fatalf("shutdown logged before store cleanup: %s", output)
+				closed := slices.Index(lines, "store_closed")
+				if closed < 0 || closed >= shutdown {
+					t.Fatalf("missing store cleanup before shutdown record: %s", output)
 				}
 			} else if strings.Contains(output, `"event":"shutdown"`) {
 				t.Fatalf("failed shutdown reported success: %s", output)
@@ -195,6 +230,33 @@ func TestSubprocessSignalLifecycle(t *testing.T) {
 				if !strings.Contains(output, "worker_finished\nstore_closed") {
 					t.Fatalf("close ordering: %s", output)
 				}
+			}
+		})
+	}
+}
+func TestSubprocessSignalPreservesExitWhenFinalLogPipeCloses(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, articles("A", "B"))
+	}))
+	defer server.Close()
+	for _, tc := range []struct {
+		mode string
+		want int
+	}{{"closed_stdout", 0}, {"closed_stderr", 1}} {
+		t.Run(tc.mode, func(t *testing.T) {
+			p := startHelper(t, tc.mode, definitions(t, "news", "3600", server.URL), t.TempDir())
+			// The independent marker arrives after startup logging and, for
+			// stdout, the initial run's completion log. No further normal
+			// writes can race with closing the final record's reader.
+			p.await(t, "worker_started")
+			if err := p.brokenPipe.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := p.cmd.Process.Signal(syscall.SIGTERM); err != nil {
+				t.Fatal(err)
+			}
+			if output := p.finish(t, tc.want); !slices.Contains(strings.Split(output, "\n"), "store_closed") {
+				t.Fatalf("missing store cleanup marker: %s", output)
 			}
 		})
 	}
