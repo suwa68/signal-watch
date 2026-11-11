@@ -299,7 +299,23 @@ The review also found a **Minor** assertion gap at
 `cmd/signalwatch/process_test.go:177`. If `store_closed` is absent, its index is
 `-1` and the ordering check passes. The independent unit test observes actual
 join and cleanup, so this assertion gap can be corrected with the subprocess
-regression for the Important finding. Under the single-wave review cap the
-Parent retains draft status and records the remaining corrective pass in the
-[handoff](../handoffs/phase2-monitoring-mvp.md). CI status is tracked for the
-current PR head separately from review readiness.
+regression for the Important finding. The Parent recorded both findings in the
+draft and paused at the single-wave review cap. The user then resumed the
+corrective pass.
+
+The fresh scoped reviewer inspected `8b7bea5..98b8dc3` and the actual Go Unix
+file behavior. For final records only, the command uses
+`SyscallConn.Control` and `F_DUPFD_CLOEXEC` to borrow a live standard descriptor
+and obtain a duplicate above fd 2. A broken pipe on that descriptor is an
+ordinary write error. The duplicate closes after use. Descriptor failures
+drop the record within the existing best-effort policy. The 25 ms budget
+still covers mutex contention and output.
+
+The review closed the Important and Minor findings without new breakage. Real
+signal subprocesses reproduce the pre-fix SIGPIPE after SQLite cleanup and
+verify exit 0 with closed stdout and exit 1 with closed stderr after the fix.
+Connected-output tests require one exact success record after the cleanup
+marker. Full tests, race, vet and Linux arm64 production-image acceptance
+passed. Darwin arm64 evidence for this pass is a cross-build. The
+[handoff](../handoffs/phase2-monitoring-mvp.md) retains commands and provenance.
+The draft PR description records CI for its current head.

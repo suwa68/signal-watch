@@ -45,7 +45,8 @@ aggregation, NLP, brokers/distributed workers, merge or deployment.
 | 2 — scheduler | Complete; independently approved | 206c71b + tracking-only9c7e14a; runtime/race/Pipeline/full checks passed; no review findings |
 | 3 — daemon | Complete; independently approved after fix round 1 | Fresh executor from2840fe5; initial12bf8d0 + fatal-boundary fixb7515ca; actual command/race/vet and helper evidence below |
 | 4 — Compose/acceptance | Complete; independently approved after fix round 1 | Original6bce42f + fix8a2fce4; actual corrected offline SDK/TLS acceptance, full tests and affected race/vet pass; platform evidence below |
-| Whole-branch fix wave | I1/M1 addressed in `f35224e`; scoped re-review left an Important regression open | Production uncertain-send/restart passes. Connected output emits shutdown after cleanup. A closed stdout pipe can cause SIGPIPE on the final record. |
+| Whole-branch fix wave | I1/M1 addressed in `f35224e` | Production uncertain-send/restart passes. Connected output emits shutdown after cleanup. Scoped review found a closed-pipe regression. |
+| User-authorized corrective pass | Both remaining findings closed in `98b8dc3` and independently verified | Actual SIGTERM and SQLite subprocess checks preserve exit 0 with closed stdout and exit 1 with closed stderr. Connected output requires the cleanup marker before shutdown success. |
 
 The Parent's plan-local progress ledger/briefs/reports are under
 `.superpowers/sdd/2026-11-08-phase2-execution/`. That directory is ignored scratch;
@@ -99,31 +100,20 @@ do not rerun it in a sandbox permission-failure loop.
 
 ## Next steps
 
-The one whole-branch fix wave at `f35224e` addressed both original findings.
-Its scoped re-review reproduced a new Important SIGPIPE regression in the
-success logger at `cmd/signalwatch/log.go:68`. If stdout's consumer disappears
-while the daemon is idle, the final record can replace exit 0 with SIGPIPE after
-successful cleanup. A focused subprocess using the exact logger reproduced it.
-The Minor test gap at `cmd/signalwatch/process_test.go:177` accepts a missing
-`store_closed` marker. The separate unit test verifies actual cleanup ordering.
-See the [review record](../reviews/2026-11-08-phase2-architecture-review.md).
-
-The Superpowers final review caps the fix wave at one. Keep PR #32 as a draft
-until the user authorizes another corrective pass. Preserve the 25 ms output
-bound, emit the clean record after join and close, and preserve exit 0 if the
-pipe reader is absent. Exercise that condition with a real signal subprocess
-and require the cleanup marker in the existing order assertion. Review the
-result and verify both `Test and vet` and `Monitoring acceptance` against its
-current PR head. The PR description holds the latest CI run. Tasks 1–4 remain
-accepted. Merge, deployment and live Telegram are outside the approved work.
+Implementation and independent reviews are complete through the closed-pipe
+fix at `98b8dc3`. PR #32 remains a draft for human review. Its description
+records `Test and vet` and `Monitoring acceptance` for the current PR head.
+Recheck both jobs after any further push. The approved work ends at the draft
+PR and its validation. See the
+[review record](../reviews/2026-11-08-phase2-architecture-review.md).
 
 Storage remains `state.OpenSQLite(ctx,directory)` with concrete `Close()`,
 `ErrUnavailable`/`ErrFatal`, the four StateStore methods, modernc v1.59.0 and
 `state.db`/`.signalwatch.lock`. Scheduling remains `runtime.Run(ctx,sources,report)`;
 report follows the entire RunOnce return. Query composition keeps
 `LoadHTMLCatalogAndRunner` and the original wrapper. No accepted core API changed
-for packaging. The task sections below retain historical implementation/review
-evidence; the latest whole-branch fix section is the current runtime checkpoint.
+for packaging. The task sections below retain historical evidence. The
+closed-pipe section records the latest runtime checkpoint.
 
 ## Task 3 fresh-context continuation rehearsal (2026-11-08)
 
@@ -476,5 +466,34 @@ The ignored `whole-branch-fix-report.md` lists exact commands and limits.
 
 The required uncertain-send scenario is present and independently verified. The
 scoped review also reproduced the closed-stdout SIGPIPE issue and recorded the
-Minor marker assertion gap. The review status and next steps above supersede the
-pre-review checkpoint. Exact CI provenance belongs to the PR head and its run.
+Minor marker assertion gap. The corrective pass below resolved both.
+
+## Closed-pipe corrective pass
+
+The user resumed the two outstanding findings. Commit
+`98b8dc3d839073496c21fc9ee7fb3ab235d82b3c` uses a temporary close-on-exec
+duplicate above fd 2 for final stdout/stderr records. Go reports a broken pipe
+on the duplicate as a write error. The command drops the best-effort record and
+preserves the shutdown result. The 25 ms wait budget covers duplication,
+serialization and output. The subprocess assertion requires one exact
+shutdown success record after the standalone `store_closed` marker.
+
+The Linux arm64 Go 1.25.14 subprocess test closes one real output pipe reader
+after readiness and sends SIGTERM. Both cases require a marker emitted after
+successful SQLite close. Before the fix all six runs died from SIGPIPE.
+Afterward the stdout case exited 0 and the fatal stderr case exited 1 in all
+30 repetitions. The 20-repeat focused race run includes those cases, cleanup
+ordering and bounded blocked writes. Uncached full Go tests, full race and vet
+also passed. Linux arm64 and Darwin arm64 CGO-disabled builds passed. Darwin
+evidence for this correction is a cross-build.
+
+`integration/monitor/acceptance.sh` exited 0 on clean `98b8dc3` with Go
+1.25.14, Linux arm64 and Docker Compose 5.3.1. Project
+`sw-acceptance-1794379801-2522` recorded the connected-output shutdown success
+and passed restart, uncertain-send and stopped SQLite checks. Its monitor image
+ID was `sha256:0e77d12fd6eb0c5d54c7953c33012c7b6a9e17e0984e9de6af2c4074ac8afc31`.
+The fixture ID was
+`sha256:319d1a67f7444f604941ac5592a8c98b886b19f9808b6cf6baca723c33b2cd6d`.
+The project containers, network and volumes were removed after the run.
+Independent scoped review closed both findings without new breakage. The PR
+description links current-head CI separately from these local results.

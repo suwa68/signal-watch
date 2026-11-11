@@ -50,8 +50,9 @@ item is collected again. A disappearing failed item is not queued. Uncertain sen
 outcomes or failed/interrupted marks can duplicate. Clean signal shutdown exits 0;
 fatal state/cleanup/shutdown-timeout errors exit nonzero. Successful join and state
 cleanup emit one global `{"event":"shutdown","status":"success"}` record on
-stdout. Like final fatal diagnostics, it has a 25-millisecond best-effort flush;
-blocked output can lose this final record but cannot delay exit indefinitely.
+stdout. Final shutdown and fatal records have a 25-millisecond best-effort
+flush budget. A blocked output or closed pipe reader can drop the record.
+The shutdown outcome determines the exit status.
 
 ## Offline acceptance
 

@@ -1,11 +1,11 @@
 # Phase 2 autonomy validation
 
-Status on 2026-11-11. All four task reviews are complete. The one whole-branch
-fix wave at `f35224e` closed the original uncertain-send and shutdown logging
-findings and passed local full tests, race, vet and offline Compose acceptance.
-Its scoped re-review reproduced an Important exit-status regression when stdout
-has no reader and found a Minor subprocess assertion gap. The draft remains
-open for correction. The PR description records CI for its current head.
+All four task reviews and the whole-branch findings are complete. Scoped review
+of `f35224e` found a closed-stdout exit-status regression and a subprocess
+assertion gap. After the user resumed, a separate corrective pass at
+`98b8dc3` fixed both and passed independent review, local full tests, race, vet
+and offline Compose acceptance. The PR description records CI for its current
+head.
 Issue [#31](https://github.com/suwa68/signal-watch/issues/31), draft
 PR [#32](https://github.com/suwa68/signal-watch/pull/32), branch
 `feat/phase2-monitoring-mvp`. Product progress and exact commands are in the
@@ -43,6 +43,7 @@ Parent used no `gh pr checks --watch` or `gh run watch` commands.
 | [42462380592](https://github.com/suwa68/signal-watch/actions/runs/42462380592) | 2840fe5 | Fresh-context daemon implementation; Parent updated the PR with reviewed checkpoint/remaining work |
 | [42571122272](https://github.com/suwa68/signal-watch/actions/runs/42571122272) | 8a2fce4 | Parent assembled the tracked review and autonomy handoff while the acceptance fix ran |
 | [42571336462](https://github.com/suwa68/signal-watch/actions/runs/42571336462) | b9f0c19 | Fresh whole-branch review compared implemented behavior with the approved evidence tiers |
+| [42888414849](https://github.com/suwa68/signal-watch/actions/runs/42888414849) | 8b7bea5 | Parent verified the handoff and updated the draft PR with the remaining review findings |
 
 Every push invalidates earlier-head completion evidence. Some earlier CI runs
 passed while independent review still found cancellation defects; CI success was
@@ -50,8 +51,8 @@ not substituted for review. Final expected checks must be read against the curre
 PR head, including the Monitoring acceptance job. Run
 [42502790679](https://github.com/suwa68/signal-watch/actions/runs/42502790679)
 passed both jobs for `6bce42f` while acceptance-review corrections remained open.
-The two later runs in the table passed both jobs as well. Review findings still
-govern readiness. The workflow does not configure branch protection.
+The three later runs in the table passed both jobs as well. Review findings
+still governed readiness. The workflow does not configure branch protection.
 
 ## Cross-session Continuity
 
@@ -83,7 +84,7 @@ author summaries or green CI alone.
 | Self-review: blocked operational output also blocked the final timeout diagnostic | Bounded best-effort final diagnostic; blocked-writer RED/GREEN; independently assessed with daemon lifecycle |
 | Exact-state inspector inferred initialization from seen rows; shutdown assertion could accept a timeout before the signal | Actual SQLite and cancellation-epoch RED/GREEN; independent initialized-set comparison and fresh-start signal/completion barriers in8a2fce4; scoped re-review approved both, no new findings |
 | Whole-branch review found missing production uncertain-send acceptance and a missing clean-shutdown record | One fix agent addressed both in `f35224e`. Scoped re-review verified the withheld-response restart and bounded clean record with connected output. |
-| Scoped final review reproduced SIGPIPE when final stdout has no reader | Important and open. A silent control exited 0. The new record terminated the probe with a broken pipe. The same review found a Minor missing-marker assertion gap. |
+| Scoped final review reproduced SIGPIPE when final stdout has no reader and found a missing-marker assertion gap | User resumed both findings. Fix `98b8dc3` uses a temporary descriptor for final writes, verifies actual clean and fatal exits with one closed reader, and requires the cleanup marker before the success record. Independent review closed both findings. |
 
 The corrections preserve existing interfaces and avoid an outbox, generic retry
 engine, logging queue/framework, public test flags or new product configuration.
@@ -93,8 +94,6 @@ recollection-only retry, log backpressure/diagnostic loss and OS/filesystem limi
 
 The reviews caught concrete transaction, shutdown and acceptance problems before
 human review. A measured reduction in architecture rework remains unverified.
-The final scoped review leaves the closed-pipe regression open despite successful
-ordinary-output Compose acceptance.
 
 ## Parent rulings, in chronological order
 
@@ -108,3 +107,4 @@ These decisions are preserved from the execution ledger, including their costs i
 6. Keep the approved scope of the eight whole-review boundaries for delivery/outbox, immediate fatal abort, distributed/filesystem/power-loss, helper-internal crash windows, deferred features, live services/deployment, Windows, and lossless blocked logging. Stronger operator expectations or additional environments would require expanded acceptance. The required uncertain-send scenario and shutdown log were addressed in the fix wave.
 7. Treat the closed-stdout SIGPIPE regression as load-bearing for clean exit 0. Surface it at the review gate and require an output path that preserves the exit status with no reader, plus a real subprocess regression. A mistaken clearance could let a normal stop exit nonzero after successful cleanup.
 8. Park the Minor subprocess marker assertion for that corrective pass. The separate unit test observes actual join and close before the record. A future subprocess-only cleanup regression might escape the current marker comparison.
+9. Duplicate standard descriptors only for final records. The extra descriptor operation can fail and drop a final record. The 25 ms budget and shutdown exit status still govern the result.
